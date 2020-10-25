@@ -1,10 +1,6 @@
 #include <stdlib.h>
-#include <crtdbg.h>
+
 #include "initialize.h"
-#include "buffer.h"
-#include "interface.h"
-#include "ftl.h"
-#include "fcl.h"
 
 #define FALSE		0
 #define TRUE		1
@@ -13,7 +9,9 @@
 #define ACTIVE_ADJUST 1
 
 extern int secno_num_per_page, secno_num_sub_page;
-extern double cache_size[10] = { 0.001, 0.01, 0.05, 0.1, 0.15, 0.2, 0.25, 0.3, 0.35, 1 };
+//extern double cache_size[10] = { 0.001, 0.01, 0.05, 0.1, 0.15, 0.2, 0.25, 0.3, 0.35, 1 };
+double cache_size_ts[10] = {0.001, 0.01, 0.02,0.03, 0.04, 0.05};
+
 /************************************************************************
 * Compare function for AVL Tree                                        
 ************************************************************************/
@@ -51,27 +49,26 @@ extern int freeFunc(TREE_NODE *pNode)
 *1.this function allocate memory for ssd structure 
 *2.set the infomation according to the parameter file
 *******************************************/
-struct ssd_info *initiation(struct ssd_info *ssd,unsigned int off)
+struct ssd_info *initiation(struct ssd_info *ssd)
 {
-	unsigned int x=0,y=0,i=0,j=0,k=0,l=0,m=0,n=0;
-	errno_t err;
 	char buffer[300];
 	struct parameter_value *parameters;
 	FILE *fp=NULL;
 	
 
-	
 	//Import the configuration file for ssd
 	parameters=load_parameters(ssd->parameterfilename);
 	ssd->parameter=parameters;
 	ssd->min_lsn=0x7fffffff;
 	ssd->page=ssd->parameter->chip_num*ssd->parameter->die_chip*ssd->parameter->plane_die*ssd->parameter->block_plane*ssd->parameter->page_block;
-	ssd->parameter->update_reqeust_max = (ssd->parameter->dram_capacity / ssd->parameter->page_capacity) / INDEX;
+	ssd->parameter->update_reqeust_max = (ssd->parameter->data_dram_capacity / ssd->parameter->page_capacity) / INDEX;
 	secno_num_per_page = ssd->parameter->page_capacity / SECTOR;
 	secno_num_sub_page = ssd->parameter->subpage_capacity / SECTOR;
 
 	//Initialize the statistical parameters
 	initialize_statistic(ssd);
+
+	ssd->debug_cnt = 0;
 
 	//Initialize channel_info
 	ssd->channel_head=(struct channel_info*)malloc(ssd->parameter->channel_number * sizeof(struct channel_info));
@@ -84,67 +81,56 @@ struct ssd_info *initiation(struct ssd_info *ssd,unsigned int off)
 
 	ssd->sb_info = fopen("superblock_info.txt", "w");
 	ssd->read_req = fopen("read requests.txt", "w");
+	ssd->write_req = fopen("write requests.txt","w");
+	ssd->smt = fopen("smt informnation.txt","w");
+
 	//ssd->die_read_req = fopen("Read_Request_Count_Per_Die.txt", "w");
 	//show sb info 
-	//show_sb_info(ssd);
-	find_active_superblock(ssd,0);
-	find_active_superblock(ssd,1);
+	//show_sb_info(ssd);;
 
-
-	
 
 	//Initialize dram_info
 	ssd->dram = (struct dram_info *)malloc(sizeof(struct dram_info));
 	alloc_assert(ssd->dram, "ssd->dram");
 	memset(ssd->dram, 0, sizeof(struct dram_info));
-	initialize_dram(ssd, off);
+	initialize_dram(ssd);
 
-
-	if ((err = fopen_s(&ssd->die_read_req, ssd->die_read_req_name, "w")) != 0)
+	//if ((err = fopen_s(&ssd->outputfile, ssd->outputfilename, "w")) != 0)
+	ssd->outputfile = fopen(ssd->outputfilename, "w");
+	if (ssd->outputfile == NULL)
 	{
 		printf("the output file can't open\n");
 		return NULL;
 	}
 
-	if ((err = fopen_s(&ssd->outputfile, ssd->outputfilename, "w")) != 0)
-	{
-		printf("the output file can't open\n");
-		return NULL;
-	}
-
-	//printf("\n");
-	if((err=fopen_s(&ssd->statisticfile,ssd->statisticfilename,"w"))!=0)
+	//if((err=fopen_s(&ssd->statisticfile,ssd->statisticfilename,"w"))!=0)
+	ssd->statisticfile = fopen(ssd->statisticfilename, "w");
+	if(ssd->statisticfile == NULL)
 	{
 		printf("the statistic file can't open\n");
 		return NULL;
 	}
-
-	//printf("\n");
-
 
 	fprintf(ssd->outputfile,"parameter file: %s\n",ssd->parameterfilename); 
 	fprintf(ssd->outputfile,"trace file: %s\n",ssd->tracefilename);
 	fprintf(ssd->statisticfile,"parameter file: %s\n",ssd->parameterfilename); 
 	fprintf(ssd->statisticfile,"trace file: %s\n",ssd->tracefilename);
 
-
-
 	fflush(ssd->outputfile);
 	fflush(ssd->statisticfile);
-
-
-
-	if((err=fopen_s(&fp,ssd->parameterfilename,"r"))!=0)
+	fp = fopen(ssd->parameterfilename, "rb");
+	if (fp == NULL)
+	//if((err=fopen_s(&fp,ssd->parameterfilename,"r"))!=0)
 	{
 		printf("\nthe parameter file can't open!\n");
 		return NULL;
 	}
 
 	//fp=fopen(ssd->parameterfilename,"r");
-
 	fprintf(ssd->outputfile,"-----------------------parameter file----------------------\n");
 	fprintf(ssd->statisticfile,"-----------------------parameter file----------------------\n");
-	while(fgets(buffer,300,fp))
+	char *tmp = NULL;
+	while((tmp = fgets(buffer,300,fp)) != NULL)
 	{
 		fprintf(ssd->outputfile,"%s",buffer);
 		fflush(ssd->outputfile);
@@ -163,24 +149,15 @@ struct ssd_info *initiation(struct ssd_info *ssd,unsigned int off)
 	fclose(fp);
 	printf("initiation is completed!\n");
      
-	//power parameter
-	ssd->mapping_scheme = PAGE_MAPPING;
-	ssd->buffer_type  =  DRAM_POWER_32MB_LOW;
-	ssd->data_allocation = SMART_DATA_ALLOCATION;
-
 	return ssd;
 }
 
-
-
 void initialize_statistic(struct ssd_info * ssd)
 {
-	//Initialize parameters
 	ssd->read_count = 0;
 	ssd->update_read_count = 0;
 	ssd->req_read_count = 0;
 	ssd->gc_read_count = 0;
-
 	ssd->gc_read_hit_cnt = 0;
 	ssd->req_read_hit_cnt = 0;
 	ssd->update_read_hit_cnt = 0;
@@ -205,131 +182,96 @@ void initialize_statistic(struct ssd_info * ssd)
 	ssd->make_age_free_page = 0;
 	ssd->buffer_full_flag = 0;
 	ssd->request_lz_count = 0;
-	ssd->trace_over_flag = 0;
-	ssd->update_sub_request = 0;
 	ssd->resume_count = 0;
-	ssd->die_token = 0;
 	ssd->plane_count = 0;
+
 	ssd->read_avg = 0;
 	ssd->write_avg = 0;
+
 	ssd->write_request_count = 0;
 	ssd->read_request_count = 0;
-	ssd->current_time = 0;
+
 
 	ssd->m_plane_prog_count = 0;
 	ssd->mutliplane_oneshot_prog_count = 0;
 	ssd->one_shot_read_count = 0;
 
-	ssd->write_cache_hit_num = 0;
-	ssd->write_evict = 0;
-	ssd->evict = 0;
-	ssd->read_cache_hit_num = 0;
-	ssd->read_evict = 0;
+
+	ssd->read_tran_cache_hit = 0;
+	ssd->read_tran_cache_miss = 0;
+	ssd->write_tran_cache_hit = 0;
+	ssd->write_tran_cache_miss = 0;
 
 	ssd->data_read_cnt = 0;
 	ssd->tran_read_cnt = 0;
 	ssd->data_update_cnt = 0;
 	ssd->tran_update_cnt = 0; 
-	ssd->data_req_cnt = 0;
-	ssd->tran_req_cnt = 0;
+	ssd->data_read_cnt = 0;
+	ssd->tran_read_cnt = 0;
 	ssd->data_program_cnt = 0;
 	ssd->tran_program_cnt = 0;
-
-	/*ssd->gc_num[0] = 0;
-	ssd->gc_num[1] = 0;
-	ssd->gc_num[2] = 0;
-	ssd->gc_num[3] = 0;
-	ssd->gc_num[4] = 0;
-	ssd->gc_num[5] = 0;*/
 }
 
 
-struct dram_info * initialize_dram(struct ssd_info * ssd,unsigned int off)
+struct dram_info * initialize_dram(struct ssd_info * ssd)
 {
-	unsigned int page_num,tran_page_num;
-	unsigned int i;
-
+	unsigned int page_num,tran_page_num, sub_page_num;
+    //data buffer 
 	struct dram_info *dram=ssd->dram;
-	dram->dram_capacity = ssd->parameter->dram_capacity;	
-	dram->buffer = (tAVLTree *)avlTreeCreate((void*)keyCompareFunc , (void *)freeFunc);
+	dram->data_buffer_capacity = ssd->parameter->data_dram_capacity;
+	dram->mapping_buffer_capacity = ssd->parameter->mapping_dram_capacity;
 
-	//这里计算了缓存的大小，根据不同的算法，调整了数据缓存的大小
-	if (ssd->parameter->allocation_scheme == DYNAMIC_ALLOCATION)
+	//data cache
+	dram->data_buffer = (tAVLTree *)avlTreeCreate((void*)keyCompareFunc , (void *)freeFunc);
+	dram->data_buffer->max_buffer_sector = dram->data_buffer_capacity /SECTOR;  // not uncluding command buffer ; unit is 512B = sector 
+
+	//mapping  cache 
+	dram->mapping_buffer = (tAVLTree*)avlTreeCreate((void*)keyCompareFunc, (void*)freeFunc);
+
+	if (DFTL)
 	{
-		if (ssd->parameter->dynamic_allocation == STRIPE_DYNAMIC_ALLOCATION || ssd->parameter->dynamic_allocation == OSPA_DYNAMIC_ALLOCATION || ssd->parameter->dynamic_allocation == POLL_DISTRANCE_ALLOCATION)
-			dram->buffer->max_buffer_sector = (ssd->parameter->dram_capacity / ssd->parameter->subpage_capacity) - (ssd->parameter->plane_die * PAGE_INDEX * ssd->parameter->subpage_page * DIE_NUMBER);
-		else
-			dram->buffer->max_buffer_sector = (ssd->parameter->dram_capacity / ssd->parameter->subpage_capacity) - (ssd->parameter->plane_die * PAGE_INDEX * ssd->parameter->subpage_page);
+		dram->mapping_buffer->max_buffer_B = dram->mapping_buffer_capacity / B;  // not uncluding command buffer ; unit is B
+		dram->mapping_node_count = 0;
 	}
-	else if (ssd->parameter->allocation_scheme == STATIC_ALLOCATION)
+	else  //ideal
 	{
-		dram->buffer->max_buffer_sector = (ssd->parameter->dram_capacity / ssd->parameter->subpage_capacity) - (ssd->parameter->plane_die * PAGE_INDEX * ssd->parameter->subpage_page * DIE_NUMBER);
-	}
-	else if (ssd->parameter->allocation_scheme == HYBRID_ALLOCATION)
-	{
-		dram->buffer->max_buffer_sector = (ssd->parameter->dram_capacity / ssd->parameter->subpage_capacity) - (ssd->parameter->plane_die * PAGE_INDEX * ssd->parameter->subpage_page * 5);
-	}
-	else if (ssd->parameter->allocation_scheme == SUPERBLOCK_ALLOCATION)
-	{
-		if (DFTL)
-			dram->buffer->max_buffer_sector = (ssd->parameter->dram_capacity / ssd->parameter->subpage_capacity) - (2*ssd->parameter->subpage_page *ssd->sb_pool[0].blk_cnt);
-		else
-			dram->buffer->max_buffer_sector = (ssd->parameter->dram_capacity / ssd->parameter->subpage_capacity) - (ssd->parameter->subpage_page *ssd->sb_pool[0].blk_cnt);
+		dram->mapping_buffer->max_buffer_B = 99999999;  // not uncluding command buffer ; unit is B
+		dram->mapping_node_count = 0;
 	}
 
-	//dram->buffer->max_buffer_sector=ssd->parameter->dram_capacity / ssd->parameter->subpage_capacity; 
 
-	/**********************************************增加高级命令的缓存初始化******************************************************************/
-	//1.为对应的缓存定平衡二叉树
-	for (i = 0; i < 2;i++)
-		dram->command_buffer[i] = (tAVLTree *)avlTreeCreate((void*)keyCompareFunc, (void *)freeFunc);
-	for (i = 0; i < DIE_NUMBER; i++)
-		dram->static_die_buffer[i] = (tAVLTree *)avlTreeCreate((void*)keyCompareFunc, (void *)freeFunc);
 
-	//2.给不同的缓存，按照高级命令设置不同的大小
+	//command buffers for user data and mapping data
+	dram->data_command_buffer = (tAVLTree *)avlTreeCreate((void*)keyCompareFunc, (void *)freeFunc);
+	dram->mapping_command_buffer = (tAVLTree*)avlTreeCreate((void*)keyCompareFunc, (void*)freeFunc);
+
 	if (ssd->parameter->flash_mode == SLC_MODE)
 	{
-		dram->command_buffer[0]->max_command_buff_page = ssd->sb_pool[0].blk_cnt;
-		dram->command_buffer[1]->max_command_buff_page = ssd->sb_pool[0].blk_cnt;
-		/*
-		if ((ssd->parameter->advanced_commands&AD_MUTLIPLANE) == AD_MUTLIPLANE)
-		{
-			dram->command_buffer->max_command_buff_page = ssd->parameter->plane_die;
-			for (i = 0; i < DIE_NUMBER; i++)
-				dram->static_die_buffer[i]->max_command_buff_page = ssd->parameter->plane_die;
-		}
-		else
-		{
-			dram->command_buffer->max_command_buff_page = 1;
-			for (i = 0; i < DIE_NUMBER; i++)
-				dram->static_die_buffer[i]->max_command_buff_page = 1;
-		}
-		*/
+		dram->data_command_buffer->max_command_buff_page = ssd->sb_pool[0].blk_cnt*ssd->parameter->subpage_page;
+		dram->mapping_command_buffer->max_command_buff_page = ssd->sb_pool[0].blk_cnt * ssd->parameter->subpage_page;
 	}
 	/******************************************************************************************************************************************/
 
-	dram->map = (struct map_info *)malloc(sizeof(struct map_info));
-	alloc_assert(dram->map,"dram->map");
-	memset(dram->map,0, sizeof(struct map_info));
-	dram->map->cache_max = -1;
+	//Mapping Table: LPN -> PPN
+	page_num = (ssd->parameter->page_block * ssd->parameter->block_plane * ssd->parameter->plane_die * ssd->parameter->die_chip * ssd->parameter->chip_num) / (1 + ssd->parameter->overprovide);
+	sub_page_num = page_num * ssd->parameter->subpage_page;
+	dram->map = (struct map_info*)malloc(sizeof(struct map_info));
+	alloc_assert(dram->map, "dram->map");
+	memset(dram->map, 0, sizeof(struct map_info));
+	dram->map->map_entry = (struct entry*)malloc(sizeof(struct entry) * sub_page_num);
+	alloc_assert(dram->map->map_entry, "dram->map->map_entry");
+	memset(dram->map->map_entry, 0, sizeof(struct entry) * sub_page_num);
 
-	page_num = (ssd->parameter->page_block*ssd->parameter->block_plane*ssd->parameter->plane_die*ssd->parameter->die_chip*ssd->parameter->chip_num)/(1+ssd->parameter->overprovide);
-	dram->map->map_entry = (struct entry *)malloc(sizeof(struct entry) * page_num); 
-	alloc_assert(dram->map->map_entry,"dram->map->map_entry");
-	memset(dram->map->map_entry,0,sizeof(struct entry) * page_num);
-	
-
-	dram->tran_map = (struct map_info *)malloc(sizeof(struct map_info));
+	//Global Translation Table: VPN -> PPN
+	ssd->map_entry_per_subpage = ssd->parameter->subpage_capacity / (ssd->parameter->mapping_entry_size / 2);
+	dram->tran_map = (struct map_info*)malloc(sizeof(struct map_info));
 	alloc_assert(dram->tran_map, "dram->tran_map");
-	memset(dram->tran_map, 0, sizeof(struct map_info));
-	tran_page_num = page_num / (ssd->parameter->page_capacity / 4);
-	dram->tran_map->map_entry = (struct entry *)malloc(sizeof(struct entry) * tran_page_num);
+	memset(dram->tran_map, 0, sizeof(struct map_info)); 
+
+	tran_page_num = sub_page_num / ssd->map_entry_per_subpage;  //for DFTL
+	dram->tran_map->map_entry = (struct entry*)malloc(sizeof(struct entry) * tran_page_num);
 	memset(dram->tran_map->map_entry, 0, sizeof(struct entry) * tran_page_num);
 
-	if (SMART_DATA_ALLOCATION)
-		ssd->cache_size = page_num*cache_size[off]* 4 / 3;
-	else
-		ssd->cache_size = page_num*cache_size[off];
 	return dram;
 }
 
@@ -354,17 +296,17 @@ void intialize_sb(struct ssd_info * ssd)
 				ssd->sb_pool[i].blk_cnt = sb_size;
 				ssd->sb_pool[i].next_wr_page = 0;
 				ssd->sb_pool[i].pg_off = -1;
-				ssd->sb_pool[i].pos = (struct superblock *)malloc(sizeof(struct local)*sb_size);
+				ssd->sb_pool[i].pos = (struct local*)malloc(sizeof(struct local)*sb_size);
 				ssd->sb_pool[i].blk_type = -1;
 				block_off = 0;
 
-				for (plane = 0; plane < ssd->parameter->plane_die; plane++)
+				for (chan = 0; chan < ssd->parameter->channel_number; chan++)
 				{
-					for (die = 0; die < ssd->parameter->die_chip; die++)
+					for (chip = 0; chip < ssd->parameter->chip_channel[0]; chip++)
 					{
-						for (chip = 0; chip < ssd->parameter->chip_channel[0]; chip++)
+						for (die = 0; die < ssd->parameter->die_chip; die++)
 						{
-							for (chan = 0; chan < ssd->parameter->channel_number; chan++)
+							for (plane = 0; plane < ssd->parameter->plane_die; plane++)
 							{
 								ssd->sb_pool[i].pos[block_off].channel = chan;
 								ssd->sb_pool[i].pos[block_off].chip = chip;
@@ -390,7 +332,7 @@ void intialize_sb(struct ssd_info * ssd)
 				ssd->sb_pool[i].blk_cnt = sb_size;
 				ssd->sb_pool[i].next_wr_page = 0;
 				ssd->sb_pool[i].pg_off = -1;
-				ssd->sb_pool[i].pos = (struct superblock *)malloc(sizeof(struct local)*sb_size);
+				ssd->sb_pool[i].pos = (struct local*)malloc(sizeof(struct local)*sb_size);
 				block_off = 0;
 
 				for (die = 0; die < ssd->parameter->die_chip; die++)
@@ -424,7 +366,7 @@ void intialize_sb(struct ssd_info * ssd)
 				ssd->sb_pool[i].blk_cnt = sb_size;
 				ssd->sb_pool[i].next_wr_page = 0;
 				ssd->sb_pool[i].pg_off = -1;
-				ssd->sb_pool[i].pos = (struct superblock *)malloc(sizeof(struct local)*sb_size);
+				ssd->sb_pool[i].pos = (struct local*)malloc(sizeof(struct local)*sb_size);
 				block_off = 0;
 
 				for (chip = 0; chip < ssd->parameter->chip_channel[0]; chip++)
@@ -455,7 +397,7 @@ void intialize_sb(struct ssd_info * ssd)
 				ssd->sb_pool[i].blk_cnt = sb_size;
 				ssd->sb_pool[i].next_wr_page = 0;
 				ssd->sb_pool[i].pg_off = -1;
-				ssd->sb_pool[i].pos = (struct superblock *)malloc(sizeof(struct local)*sb_size);
+				ssd->sb_pool[i].pos = (struct local*)malloc(sizeof(struct local)*sb_size);
 				block_off = 0;
 
 			   for (chan = 0; chan < ssd->parameter->channel_number; chan++)
@@ -554,10 +496,18 @@ int Get_Plane(struct ssd_info * ssd, int i)
 
 struct page_info * initialize_page(struct page_info * p_page )
 {
+	int i = 0;
 	p_page->valid_state =0;
 	p_page->free_state = PG_SUB;
 	p_page->lpn = -1;
 	p_page->written_count=0;
+
+	for (i = 0; i < MAX_LUN_PER_PAGE; i++)
+	{
+		p_page->luns[i] = -1;
+		p_page->lun_state[i] = 0;
+	}
+
 	return p_page;
 }
 
@@ -597,12 +547,7 @@ struct plane_info * initialize_plane(struct plane_info * p_plane,struct paramete
 	p_plane->plane_read_count = 0;
 	p_plane->plane_program_count = 0;
 	p_plane->plane_erase_count = 0;
-	p_plane->pre_plane_write_count = 0;
-
-	p_plane->subs_w_head = NULL;
-	p_plane->subs_w_tail = NULL;
-	p_plane->subs_r_head = NULL;
-	p_plane->subs_r_tail = NULL;
+	p_plane->pre_plane_write_count = 0;;
 
 	p_plane->blk_head = (struct blk_info *)malloc(parameter->block_plane * sizeof(struct blk_info));
 	alloc_assert(p_plane->blk_head,"p_plane->blk_head");
@@ -624,7 +569,6 @@ struct die_info * initialize_die(struct die_info * p_die,struct parameter_value 
 	p_die->die_read_count = 0;
 	p_die->die_program_count = 0;
 	p_die->die_erase_count = 0;
-	p_die->token=0;
 	p_die->read_cnt = 0;
 
 	p_die->plane_head = (struct plane_info*)malloc(parameter->plane_die * sizeof(struct plane_info));
@@ -661,7 +605,6 @@ struct chip_info * initialize_chip(struct chip_info * p_chip,struct parameter_va
 	p_chip->page_num_block = parameter->page_block;
 	p_chip->subpage_num_page = parameter->subpage_page;
 	p_chip->ers_limit = parameter->ers_limit;
-	p_chip->token=0;
 	p_chip->ac_timing = parameter->time_characteristics;		
 	p_chip->chip_read_count = 0;
 	p_chip->chip_program_count = 0;
@@ -715,8 +658,7 @@ struct ssd_info * initialize_channels(struct ssd_info * ssd )
 
 struct parameter_value *load_parameters(char parameter_file[30])
 {
-	FILE * fp;
-	errno_t ferr;
+	FILE * fp = NULL;
 	struct parameter_value *p;
 	char buf[BUFSIZE];
 	int i;
@@ -728,15 +670,16 @@ struct parameter_value *load_parameters(char parameter_file[30])
 	alloc_assert(p,"parameter_value");
 	memset(p,0,sizeof(struct parameter_value));
 	memset(buf,0,BUFSIZE);
-		
-	if((ferr = fopen_s(&fp,parameter_file,"r"))!= 0)
+	fp = fopen(parameter_file, "rb");
+	if (fp == NULL)
+	// if((ferr = fopen_s(&fp,parameter_file,"r"))!= 0)
 	{	
 		printf("the file parameter_file error!\n");	
 		return p;
 	}
 
-
-	while(fgets(buf,200,fp)){
+	char *tmp = NULL;
+	while((tmp = fgets(buf, BUFSIZE, fp)) != NULL){
 		if(buf[0] =='#' || buf[0] == ' ') continue;
 		ptr=strchr(buf,'=');
 		if(!ptr) continue; 
@@ -748,8 +691,10 @@ struct parameter_value *load_parameters(char parameter_file[30])
 		buf[pre_eql] = 0;
 		if((res_eql=strcmp(buf,"chip number")) ==0){			
 			sscanf(buf + next_eql,"%d",&p->chip_num);           //The number of chips
-		}else if((res_eql=strcmp(buf,"dram capacity")) ==0){
-			sscanf(buf + next_eql,"%d",&p->dram_capacity);      //The size of the cache, the unit is byte
+		}else if((res_eql=strcmp(buf,"data dram capacity")) ==0){
+			sscanf(buf + next_eql,"%d",&p->data_dram_capacity);      //The size of the cache, the unit is byte
+		}else if ((res_eql = strcmp(buf, "mapping dram capacity")) == 0) {
+			sscanf(buf + next_eql, "%d", &p->mapping_dram_capacity);
 		}else if((res_eql=strcmp(buf,"channel number")) ==0){
 			sscanf(buf + next_eql,"%d",&p->channel_number);		//The number of channels
 		}else if((res_eql=strcmp(buf,"die number")) ==0){
@@ -766,6 +711,8 @@ struct parameter_value *load_parameters(char parameter_file[30])
 			sscanf(buf + next_eql,"%d",&p->page_capacity);		//The size of a page
 		}else if((res_eql=strcmp(buf,"subpage capacity")) ==0){
 			sscanf(buf + next_eql,"%d",&p->subpage_capacity);   //The size of a subpage (sector)
+		}else if ((res_eql = strcmp(buf, "mapping entry size")) == 0) {
+			sscanf(buf + next_eql, "%d", &p->mapping_entry_size);   //The size of a subpage (sector)
 		}else if((res_eql=strcmp(buf,"t_PROG")) ==0){
 			sscanf(buf + next_eql,"%d",&p->time_characteristics.tPROG); //Write time to write flash
 		}else if((res_eql=strcmp(buf,"t_DBSY")) ==0){
@@ -893,25 +840,6 @@ struct parameter_value *load_parameters(char parameter_file[30])
 }
 
 
-void Show_Die_Read_Req(struct ssd_info *ssd)
-{
-	unsigned int  chan, chip, die;
-	unsigned int die_read_cnt;
-	for (chan = 0; chan < ssd->parameter->channel_number; chan++)
-	{
-		for (chip = 0; chip < ssd->parameter->chip_channel[chan]; chip++)
-		{
-			for (die = 0; die < ssd->parameter->die_chip; die++)
-			{
-				die_read_cnt = Get_Read_Request_Cnt(ssd, chan, chip, die);
-				fprintf(ssd->die_read_req, "%d ", die_read_cnt);
-			}
-		}
-	}
-	fprintf(ssd->die_read_req, "\n");
-}
-
-
 int Get_Read_Request_Cnt(struct ssd_info *ssd, unsigned int chan,unsigned int chip,unsigned int die)
 {
 	int cnt = ssd->channel_head[chan].chip_head[chip].die_head[die].read_cnt;
@@ -925,7 +853,6 @@ Status Read_cnt_4_Debug(struct ssd_info *ssd)
 
 	unsigned int chan, chip, die;
 	struct sub_request *sub;
-
 
 	read_cnt = 0;
 	que_read_cnt = 0;
@@ -954,4 +881,107 @@ Status Read_cnt_4_Debug(struct ssd_info *ssd)
 	}
 	fflush(ssd->read_req);
 	return (read_cnt == que_read_cnt);
+}
+
+Status Write_cnt(struct ssd_info* ssd, unsigned int chan)
+{
+	unsigned int w_cnt;
+	struct sub_request* sub;
+
+	w_cnt = 0;
+
+	fprintf(ssd->write_req, "Channel %d  sub reqeusts are as follow:\n", chan);
+	sub = ssd->channel_head[chan].subs_w_head;
+	while (sub)
+	{
+		fprintf(ssd->write_req, "OX%p ->", sub);
+		w_cnt++;
+		sub = sub->next_node;
+	}
+	fprintf(ssd->write_req, "\n");
+	
+	fflush(ssd->write_req);
+	return w_cnt;
+}
+
+Status Read_cnt(struct ssd_info* ssd, unsigned int chan)
+{
+	unsigned int r_cnt;
+	struct sub_request* sub;
+
+	r_cnt = 0;
+	fprintf(ssd->read_req, "Channel %d  sub reqeusts are as follow:\n", chan);
+	sub = ssd->channel_head[chan].subs_r_head;
+	while (sub)
+	{
+		fprintf(ssd->read_req, "OX%p ->", sub);
+		r_cnt++;
+		sub = sub->next_node;
+		if (r_cnt > 50)
+		{
+			break;
+		}
+	}
+	fprintf(ssd->read_req, "\n");
+	fflush(ssd->read_req);
+	return r_cnt;
+}
+
+Status Debug_loc_allocation(struct ssd_info* ssd, unsigned int pun, unsigned int channel, unsigned int chip, unsigned int die, unsigned int plane, unsigned int block, unsigned int page, unsigned int unit)
+{
+	struct  local* loc;
+
+	loc = find_location_pun(ssd, pun);
+
+	if (loc->channel != channel || loc->chip != chip || loc->die != die || loc->plane != plane || loc->block != block || loc->page != page || loc->sub_page != unit)
+	{
+		printf("look here \n");
+		getchar();
+	}
+
+	free(loc);
+	loc = NULL;
+	return SUCCESS;
+}
+
+/************************************************
+*Assert,open failed，printf“open ... error”
+*************************************************/
+void file_assert(int error, char *s)
+{
+	if (error == 0) return;
+	printf("open %s error\n", s);
+	getchar();
+	exit(-1);
+}
+
+/*****************************************************
+*Assert,malloc failed，printf“malloc ... error”
+******************************************************/
+void alloc_assert(void *p, char *s)
+{
+	if (p != NULL) return;
+	printf("malloc %s error\n", s);
+	getchar();
+	exit(-1);
+}
+
+/*********************************************************************************
+*Assert
+*A，trace about time_t，device，lsn，size，ope <0 ，printf“trace error:.....”
+*B，trace about time_t，device，lsn，size，ope =0，printf“probable read a blank line”
+**********************************************************************************/
+void trace_assert(int64_t time_t, int device, unsigned int lsn, int size, int ope)
+{
+	if (time_t <0 || device < 0 || lsn < 0 || size < 0 || ope < 0)
+	{
+		printf("trace error:%ld %d %d %d %d\n", time_t, device, lsn, size, ope);
+		getchar();
+		exit(-1);
+	}
+	if (time_t == 0 && device == 0 && lsn == 0 && size == 0 && ope == 0)
+	{
+		printf("probable read a blank line\n");
+		getchar();
+	}
 }

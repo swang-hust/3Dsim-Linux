@@ -2,7 +2,6 @@
 #define _AVLTREE_H_
 
 #include <string.h>
-
 #define AVL_NULL		(TREE_NODE *)0
 
 #define EH_FACTOR	0
@@ -40,10 +39,13 @@ typedef struct buffer_info
 	struct buffer_group *buffer_tail;            /*as LRU tail which is least recently used*/
 	TREE_NODE	*pTreeHeader;     				 /*for search target lsn is LRU table*/
 
-	unsigned int max_buffer_sector;
+	unsigned int max_buffer_sector;    // count for data buffer, unit is 512 B       
 	unsigned int buffer_sector_count;
 
-	unsigned int max_command_buff_page;
+	unsigned int max_buffer_B;         //count for mapping buffer, unit is B
+	unsigned int buffer_B_count;
+
+	unsigned int max_command_buff_page;    //count for command buffer, unit is page 
 	unsigned int command_buff_page;
 
 #ifdef ORDER_LIST_WANTED
@@ -58,27 +60,27 @@ typedef struct buffer_info
 
 int avlTreeHigh(TREE_NODE *);
 int avlTreeCheck(tAVLTree *,TREE_NODE *);
-static void R_Rotate(TREE_NODE **);
-static void L_Rotate(TREE_NODE **);
-static void LeftBalance(TREE_NODE **);
-static void RightBalance(TREE_NODE **);
-static int avlDelBalance(tAVLTree *,TREE_NODE *,int);
+void R_Rotate(TREE_NODE **);
+void L_Rotate(TREE_NODE **);
+void LeftBalance(TREE_NODE **ppNode);
+void RightBalance(TREE_NODE **);
+int avlDelBalance(tAVLTree *,TREE_NODE *,int);
 void AVL_TREE_LOCK(tAVLTree *,int);
 void AVL_TREE_UNLOCK(tAVLTree *);
 void AVL_TREENODE_FREE(tAVLTree *,TREE_NODE *);
 
 #ifdef ORDER_LIST_WANTED
-static int orderListInsert(tAVLTree *,TREE_NODE *,TREE_NODE *,int);
-static int orderListRemove(tAVLTree *,TREE_NODE *);
+int orderListInsert(tAVLTree *,TREE_NODE *,TREE_NODE *,int);
+int orderListRemove(tAVLTree *,TREE_NODE *);
 TREE_NODE *avlTreeFirst(tAVLTree *);
 TREE_NODE *avlTreeLast(tAVLTree *);
 TREE_NODE *avlTreeNext(TREE_NODE *pNode);
 TREE_NODE *avlTreePrev(TREE_NODE *pNode);
 #endif
 
-static int avlTreeInsert(tAVLTree *,TREE_NODE **,TREE_NODE *,int *);
-static int avlTreeRemove(tAVLTree *,TREE_NODE *);
-static TREE_NODE *avlTreeLookup(tAVLTree *,TREE_NODE *,TREE_NODE *);
+int avlTreeInsert(tAVLTree *,TREE_NODE **,TREE_NODE *,int *);
+int avlTreeRemove(tAVLTree *,TREE_NODE *);
+TREE_NODE *avlTreeLookup(tAVLTree *,TREE_NODE *,TREE_NODE *);
 tAVLTree *avlTreeCreate(int *,int *);
 int avlTreeDestroy(tAVLTree *);
 int avlTreeFlush(tAVLTree *);

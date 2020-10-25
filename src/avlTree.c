@@ -1,9 +1,5 @@
-#define _CRTDBG_MAP_ALLOC
-
 #include <stdlib.h>
 #include "avlTree.h"
-
-
 
 /******************************************************************** 
 * 
@@ -114,9 +110,10 @@ int avlTreeCheck(tAVLTree *pTree , TREE_NODE *pNode)
 *        /                                                
 *       A0                                                 
 *                                              
+
 *                                              
 **********************************************************************/
-static void R_Rotate(TREE_NODE **ppNode)
+void R_Rotate(TREE_NODE **ppNode)
 {
 	TREE_NODE *l_child = AVL_NULL;
 	TREE_NODE *pNode = (TREE_NODE *)(*ppNode);
@@ -150,7 +147,7 @@ static void R_Rotate(TREE_NODE **ppNode)
 *                \
 *                 F0       
 *******************************************************************/ 
-static void L_Rotate(TREE_NODE **ppNode)
+void L_Rotate(TREE_NODE **ppNode)
 {
 	TREE_NODE *r_child = AVL_NULL;
 	TREE_NODE *pNode = (TREE_NODE *)(*ppNode);
@@ -174,7 +171,7 @@ static void L_Rotate(TREE_NODE **ppNode)
 * 
 * Returns         :  无
 ********************************************************************/ 
-static void LeftBalance(TREE_NODE **ppNode)
+void LeftBalance(TREE_NODE **ppNode)
 {
 	TREE_NODE *left_child = AVL_NULL;
 	TREE_NODE *right_child = AVL_NULL;
@@ -232,7 +229,7 @@ static void LeftBalance(TREE_NODE **ppNode)
 * 
 * Returns         :  无
 ********************************************************************/ 
-static void RightBalance(TREE_NODE **ppNode)
+void RightBalance(TREE_NODE **ppNode)
 {
 	TREE_NODE *left_child = AVL_NULL;
 	TREE_NODE *right_child = AVL_NULL;
@@ -301,7 +298,7 @@ static void RightBalance(TREE_NODE **ppNode)
 *
 * Returns         :  无
 ******************************************************************/ 
-static int avlDelBalance
+int avlDelBalance
 (
  tAVLTree *pTree , 
  TREE_NODE *pNode,
@@ -475,7 +472,7 @@ void AVL_TREENODE_FREE
 * 
 * Returns         :  1:成功  0:失败
 *********************************************************************************/ 
-static int orderListInsert
+int orderListInsert
 (
  tAVLTree *pTree,
  TREE_NODE *pNode , 
@@ -524,7 +521,7 @@ static int orderListInsert
 * 
 * Returns         :  1:成功   0:失败
 ********************************************************************/ 
-static int orderListRemove
+int orderListRemove
 (
  tAVLTree *pTree,
  TREE_NODE *pRemoveNode
@@ -669,7 +666,7 @@ TREE_NODE *avlTreePrev
 * Returns         :  1:成功
 *                         0:失败
 ******************************************************************************************/ 
-static int avlTreeInsert
+int avlTreeInsert
 (
  tAVLTree *pTree , 
  TREE_NODE **ppNode , 
@@ -827,13 +824,12 @@ static int avlTreeInsert
 *      删除E节点  ==> 找到比E大一点的F ==>  删除E节点，自平衡                                                           
 *                     F和E互换指针                                                
 ********************************************************************/ 
-static int avlTreeRemove
+int avlTreeRemove
 (
  tAVLTree *pTree , 
  TREE_NODE *pRemoveNode
  )
 {
-	int compFlag = 0;
 	TREE_NODE *tree_root = AVL_NULL;
 	TREE_NODE *p = AVL_NULL;
 	TREE_NODE *root_p = AVL_NULL;
@@ -872,7 +868,6 @@ static int avlTreeRemove
 	{
 		TREE_NODE *prev = AVL_NULL;
 		TREE_NODE *next = AVL_NULL;
-		TREE_NODE *r_child = AVL_NULL;
 		root_p = pRemoveNode;
 		p = pRemoveNode->right_child;
 		while(p->left_child)
@@ -997,7 +992,7 @@ static int avlTreeRemove
 * Returns         :  1:成功
 *                         0:失败
 *********************************************************************/ 
-static TREE_NODE *avlTreeLookup
+TREE_NODE *avlTreeLookup
 (
  tAVLTree *pTree,
  TREE_NODE *pNode , 
@@ -1066,6 +1061,7 @@ tAVLTree *avlTreeCreate(int *keyCompareFunc,int *freeFunc)
 /*******************************************************************/
 /*
 ★描述            :  删除一个节点
+
 ★参数描述: 
 pTree:树结构的指针
 pDelNode : 待删除的节点指针
@@ -1109,7 +1105,7 @@ int avlTreeDestroy
 	if(!pTree)
 		return 0;
 
-	while(pNode = pTree->pTreeHeader)
+	while((pNode = pTree->pTreeHeader) != NULL)
 	{
 		avlTreeDel(pTree,pNode);
 		AVL_TREENODE_FREE(pTree, pNode);
@@ -1153,7 +1149,7 @@ int avlTreeFlush
 	if(!pTree->count || !pTree->pTreeHeader)
 		return 1;
 
-	while(pNode = pTree->pTreeHeader)
+	while((pNode = pTree->pTreeHeader) != NULL)
 	{
 		avlTreeDel(pTree,pNode);
 		AVL_TREENODE_FREE(pTree, pNode);
@@ -1168,6 +1164,7 @@ int avlTreeFlush
 /*******************************************************************/
 /*
 ★描述            :  增加一个节点
+
 ★参数描述: 
 pTree:树结构的指针
 pInsertNode : 待添加的节点指针
@@ -1199,6 +1196,7 @@ int avlTreeAdd
 /*******************************************************************/
 /*
 ★描述            : 根据关键字结构来查询一个节点是否存在
+
 ★参数描述: 
 pTree:树结构的指针
 pKeyNode : 关键字结构指针
@@ -1223,6 +1221,7 @@ TREE_NODE *avlTreeFind
 /*******************************************************************/
 /*
 ★描述            : 获取树里面的所有节点总数
+
 ★参数描述: 
 pTree:树结构的指针
 ★返回值      :

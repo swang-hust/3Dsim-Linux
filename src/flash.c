@@ -1,14 +1,6 @@
 #include <stdlib.h>
-#include <crtdbg.h>
 
-#include "initialize.h"
-#include "ssd.h"
 #include "flash.h"
-#include "buffer.h"
-#include "interface.h"
-#include "ftl.h"
-#include "fcl.h"
-
 
 /******************************************************************************************
 *function is to erase the operation, the channel, chip, die, plane under the block erase
@@ -20,6 +12,7 @@ Status erase_operation(struct ssd_info * ssd, unsigned int channel, unsigned int
 
 	ssd->channel_head[channel].chip_head[chip].die_head[die].plane_head[plane].blk_head[block].free_page_num = ssd->parameter->page_block;
 	ssd->channel_head[channel].chip_head[chip].die_head[die].plane_head[plane].blk_head[block].invalid_page_num = 0;
+	ssd->channel_head[channel].chip_head[chip].die_head[die].plane_head[plane].blk_head[block].invalid_subpage_num = 0;
 	ssd->channel_head[channel].chip_head[chip].die_head[die].plane_head[plane].blk_head[block].last_write_page = -1;
 	ssd->channel_head[channel].chip_head[chip].die_head[die].plane_head[plane].blk_head[block].erase_count++;
 
@@ -33,7 +26,6 @@ Status erase_operation(struct ssd_info * ssd, unsigned int channel, unsigned int
 	ssd->channel_head[channel].chip_head[chip].die_head[die].plane_head[plane].free_page += ssd->parameter->page_block;
 
 	return SUCCESS;
-
 }
 
 /******************************************************************************************
@@ -46,13 +38,14 @@ Status move_page(struct ssd_info * ssd, struct local *location, unsigned int mov
 
 Status  NAND_read(struct ssd_info *ssd, struct sub_request * req)
 {
-	unsigned int chan, chip, die, plane, block, page;
+	unsigned int chan, chip, die, plane, block, page,subpage;
 	chan = req->location->channel;
 	chip = req->location->chip;
 	die = req->location->die;
 	plane = req->location->plane;
 	block = req->location->block;
 	page = req->location->page;
+	subpage = req->location->sub_page;
 
 	if (ssd->channel_head[chan].chip_head[chip].die_head[die].plane_head[plane].blk_head[block].block_type == DATA_BLK)
 	{
@@ -60,7 +53,7 @@ Status  NAND_read(struct ssd_info *ssd, struct sub_request * req)
 		if (req->read_flag == UPDATE_READ)
 			ssd->data_update_cnt++;
 		else
-			ssd->data_req_cnt++;
+			ssd->data_read_cnt++;
 	}
 	else
 	{
@@ -68,10 +61,10 @@ Status  NAND_read(struct ssd_info *ssd, struct sub_request * req)
 		if (req->read_flag == UPDATE_READ)
 			ssd->tran_update_cnt++;
 		else
-			ssd->tran_req_cnt++;
+			ssd->tran_read_cnt++;
 	}
 		
-	if (ssd->channel_head[chan].chip_head[chip].die_head[die].plane_head[plane].blk_head[block].page_head[page].lpn != req->lpn)
+	if (ssd->channel_head[chan].chip_head[chip].die_head[die].plane_head[plane].blk_head[block].page_head[page].luns[subpage] != req->lpn)
 		return FAILURE;
 	ssd->read_count++;
 	return SUCCESS;
@@ -80,20 +73,37 @@ Status  NAND_read(struct ssd_info *ssd, struct sub_request * req)
 
 Status  NAND_program(struct ssd_info *ssd, struct sub_request * req)
 {
-	unsigned int chan, chip, die, plane, block, page;
-	chan  = req->location->channel;
+	unsigned int channel, chip, die, plane, block, page;
+	unsigned int i;
+
+	//lpn = req->lpn;
+
+	channel = req->location->channel;
 	chip  = req->location->chip;
 	die   = req->location->die;
 	plane = req->location->plane;
 	block = req->location->block;
 	page  = req->location->page;
 
-	ssd->channel_head[chan].chip_head[chip].die_head[die].plane_head[plane].blk_head[block].page_head[page].lpn = req->lpn;
-	ssd->channel_head[chan].chip_head[chip].die_head[die].plane_head[plane].blk_head[block].last_write_page++;  //ilitialization is -1
-	if (ssd->channel_head[chan].chip_head[chip].die_head[die].plane_head[plane].blk_head[block].last_write_page != page)
+	ssd->channel_head[channel].chip_head[chip].die_head[die].plane_head[plane].blk_head[block].last_write_page++;  //inlitialization is -1
+
+	ssd->channel_head[channel].chip_head[chip].die_head[die].plane_head[plane].blk_head[block].page_write_count++;
+	ssd->channel_head[channel].chip_head[chip].die_head[die].plane_head[plane].free_page--;
+	
+	//program the data 
+	for (i = 0; i < ssd->parameter->subpage_page; i++)
+	{
+		ssd->channel_head[channel].chip_head[chip].die_head[die].plane_head[plane].blk_head[block].page_head[page].luns[i] = req->luns[i];
+		ssd->channel_head[channel].chip_head[chip].die_head[die].plane_head[plane].blk_head[block].page_head[page].lun_state[i] = req->lun_state[i];
+	}
+
+	ssd->channel_head[channel].chip_head[chip].die_head[die].plane_head[plane].blk_head[block].page_head[page].valid_state = req->state;
+	ssd->channel_head[channel].chip_head[chip].die_head[die].plane_head[plane].blk_head[block].page_head[page].written_count++;
+
+	if (ssd->channel_head[channel].chip_head[chip].die_head[die].plane_head[plane].blk_head[block].last_write_page != page)
 		return FAILURE;
 
-	if (ssd->channel_head[chan].chip_head[chip].die_head[die].plane_head[plane].blk_head[block].block_type == DATA_BLK)
+	if (ssd->channel_head[channel].chip_head[chip].die_head[die].plane_head[plane].blk_head[block].block_type == DATA_BLK)
 	{
 		ssd->data_program_cnt++;
 	}
@@ -107,6 +117,23 @@ Status  NAND_program(struct ssd_info *ssd, struct sub_request * req)
 	return SUCCESS;
 }
 
+Status NAND_multi_plane_program(struct ssd_info* ssd, struct sub_request* req0, struct sub_request* req1)
+{
+	unsigned flag0,flag1;
+	flag0 = NAND_program(ssd, req0);
+	flag1 = NAND_program(ssd, req1);
+
+	return (flag0 & flag1);
+}
+
+Status NAND_multi_plane_read(struct ssd_info* ssd, struct sub_request* req0, struct sub_request* req1)
+{
+	unsigned flag0, flag1;
+	flag0 = NAND_read(ssd, req0);
+	flag1 = NAND_read(ssd, req1);
+
+	return (flag0 & flag1);
+}
 
 /*********************************************************************************************
 *this function is a simulation of a real write operation, to the pre-processing time to use
@@ -138,10 +165,7 @@ Status write_page(struct ssd_info *ssd, unsigned int channel, unsigned int chip,
 ***********************************************************************************************************/
 struct ssd_info *flash_page_state_modify(struct ssd_info *ssd, struct sub_request *sub, unsigned int channel, unsigned int chip, unsigned int die, unsigned int plane, unsigned int block, unsigned int page)
 {
-	unsigned int ppn, full_page;
-	struct local *location;
-	struct direct_erase *new_direct_erase, *direct_erase_node;
-
+	assert(0);
 	return ssd;
 }
 

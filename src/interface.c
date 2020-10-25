@@ -1,16 +1,9 @@
 #include <stdlib.h>
-#include <crtdbg.h>
 #include <stdio.h>
 #include <time.h>
 #include <string.h>
 
-#include "ssd.h"
-#include "initialize.h"
-#include "flash.h"
-#include "buffer.h"
 #include "interface.h"
-#include "ftl.h"
-#include "fcl.h"
 
 extern int secno_num_per_page, secno_num_sub_page;
 /********    get_request    ******************************************************
@@ -24,9 +17,8 @@ int get_requests(struct ssd_info *ssd)
 {
 	char buffer[200];
 	unsigned int lsn = 0;
-	int device, size, ope, large_lsn, i = 0, j = 0;
+	int device, size, ope, large_lsn;
 	struct request *request1;
-	int flag = 1;
 	long filepoint;
 	int64_t time_t;
 	int64_t nearest_event_time;
@@ -35,8 +27,7 @@ int get_requests(struct ssd_info *ssd)
 #ifdef DEBUG
 	printf("enter get_requests,  current time:%I64u\n", ssd->current_time);
 #endif
-	
-	//对于trace读完的结束设计
+
 	if (ssd->trace_over_flag == 1)
 	{
 		nearest_event_time = find_nearest_event(ssd);
@@ -52,18 +43,23 @@ int get_requests(struct ssd_info *ssd)
 	while (TRUE)
 	{
 		filepoint = ftell(ssd->tracefile);
-		fgets(buffer, 200, ssd->tracefile);
-		sscanf(buffer, "%I64u %d %d %d %d", &time_t, &device, &lsn, &size, &ope);
+		char* temp_p = fgets(buffer, 200, ssd->tracefile);
+		if (temp_p == NULL)
+			break;
+		sscanf(buffer, "%ld %d %u %d %d", &time_t, &device, &lsn, &size, &ope);
 
 		if (feof(ssd->tracefile))      //if the end of trace
 			break;
 
-		if (ssd->warm_flash_cmplt == 0 && ope == 0)
-			continue;
+		//if (ssd->warm_flash_cmplt == 0 && ope == 0)
+			//continue;
 
-		if (ssd->parameter->dram_capacity == 0)
+		if (ssd->request_lz_count > 5000000)
+			ssd->trace_over_flag = 1;
+
+		if (ssd->parameter->data_dram_capacity == 0)
 			break;
-		if (size < (ssd->parameter->dram_capacity / SECTOR))
+		if (size < (ssd->parameter->data_dram_capacity / SECTOR))
 			break;
 
 	}
@@ -195,16 +191,8 @@ int get_requests(struct ssd_info *ssd)
 	}
 
 	ssd->request_lz_count++;
-	printf("request:%I64u\n", ssd->request_lz_count);
-	if (ssd->warm_flash_cmplt == 1)
-		Show_Die_Read_Req(ssd);
-
-	//printf("%d\n", ssd->request_queue_length);
-	
-	
-	if (ssd->request_lz_count == 22559)
-		printf("lz\n");
-
+	if(ssd->request_lz_count % 10000 == 0)
+		printf("request:%ld\n", ssd->request_lz_count);
 
 	if (request1->operation == READ)             //Calculate the average request size ,1 for read 0 for write
 	{
@@ -219,8 +207,12 @@ int get_requests(struct ssd_info *ssd)
 
 
 	filepoint = ftell(ssd->tracefile);
-	fgets(buffer, 200, ssd->tracefile);    //find the arrival time of the next request
-	sscanf(buffer, "%I64u %d %d %d %d", &time_t, &device, &lsn, &size, &ope);
+	char* temp_p = fgets(buffer, 200, ssd->tracefile);    //find the arrival time of the next request
+	if (temp_p == NULL)
+	{
+		assert(0);
+	}
+	sscanf(buffer, "%ld %d %u %d %d", &time_t, &device, &lsn, &size, &ope);
 	ssd->next_request_time = time_t;
 	fseek(ssd->tracefile, filepoint, 0);
 

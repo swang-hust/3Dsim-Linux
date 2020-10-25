@@ -7,12 +7,15 @@
 #include <time.h>
 #include <stdint.h>
 #include <ctype.h>
+#include <errno.h>
+#include <assert.h>
+
 #include "avlTree.h"
 
 #define SECTOR 512
 #define BUFSIZE 200
 #define INDEX 10
-#define PAGE_INDEX 3 //tlc mode .LSB/CSB/MSB
+#define PAGE_INDEX 1 //tlc mode .LSB/CSB/MSB
 //#define PLANE_NUMBER 8 //for_plane_buffer
 #define DIE_NUMBER 4
 #define SAMPLE_SPACE 10
@@ -32,7 +35,6 @@
 
 #define CHANNEL_DYNAMIC_ALLOCATION 0
 #define PLANE_DYNAMIC_ALLOCATION 1
-
 #define STRIPE_DYNAMIC_ALLOCATION 2			//按照替换的顺序，轮询分配到每个die_buffer上面
 #define OSPA_DYNAMIC_ALLOCATION 3			//按照距离远的方法，分配到距离远的die_buffer上面
 #define POLL_DISTRANCE_ALLOCATION 4			//综合轮询和距离的办法，两者兼顾，距离太近则跳过当前轮询到下一个
@@ -123,13 +125,10 @@
 #define SUBPAGE(lsn) (lsn&0x0000)>>16  
 
 #define PG_SUB 0xffffffff			
-
 //define READ OPERATION
 #define REQ_READ 0
 #define UPDATE_READ 1
 #define GC_READ 2
-
-
 #define SET_VALID(s,i) ((1<<i)|s)
 #define GET_BIT(s,i)    ((s>>i)&1)
 
@@ -153,39 +152,16 @@
 #define READ_POWER_PAGE 1.632 
 #define ERASE_POWER_BLOCK 232.908 
 
-//mapping schemes 
-#define PAGE_MAPPING 0
-#define BLOCK_MAPPING 1
-#define HYBRID_MAPPING 2
-#define DFTL_MAPPING 3
+//dftl
+#define FULLY_CACHED 0  // NO DFTL
+#define DFTL_BASE 1
+#define SFTL 2
+#define TPFTL 3
 
-//dram power schemes
-#define LOW 0
-#define MODERATE 1
-#define HIGH 2
+#define DFTL SFTL
+#define ENTRY_PER_SUB_PAGE 1024
 
-#define B 1
-#define KB (1024*B)
-#define MB (1024*KB)
-#define GB (1024*MB)
-#define USER_SIZE (16*GB)
-
-
-#define ns 1
-#define us (1000*ns)
-#define ms (1000*us)
-#define S (1000*ms)
-
-#define uJ 1
-#define mJ (1000*uJ)
-#define J (1000*mJ)
-
-#define VERTICAL_DATA_DISTRIBUTION 1
-#define SMART_DATA_ALLOCATION 0
-#define MAX_SUPERBLOCK_SISE 32
-
-#define SB_LEVEL DIE_LEVEL
-
+#define FULL_FLAG 1024
 /* 1:plane-level superblock
 2:die-level superblock
 3:chip-level superblock
@@ -196,17 +172,24 @@
 #define DATA_BLK 0
 #define DATA_COMMAND_BUFFER 0
 #define TRANSACTION_COMMAND_BUFFER 1
-#define DFTL 1
 #define CACHE_VALID 1
 #define CACHE_INVALID 0
+#define USER_DATA 0
+#define MAPPING_DATA 1
 
 /*
     16 GB SSD  = 4 M flash pages
 */
 
+//unit 
+#define B 1
+
+
 //#define CACHE_SIZE 1024 
 #define MAX_CACHE_SIZE  (4*1024*1024)
-
+#define MAX_LSN_NUM 6 
+#define MAX_LUN_PER_PAGE 4
+#define MAP_PER_PAGE 4096
 
 /*************************************************************************
 *Function result status code
@@ -278,7 +261,7 @@ struct ssd_info{
 	int sb_cnt;
 	int free_sb_cnt;
 	struct super_block_info *sb_pool;
-	struct super_block_info *open_sb[2]; //0 is for user data ; 1 is for transation data
+	struct super_block_info *open_sb[2]; //0 is for user data ; 1 is for mapping data
 
 	int64_t current_time;                //Record system time
 	int64_t next_request_time;
@@ -303,7 +286,6 @@ struct ssd_info{
 	unsigned long update_read_count;      //Record the number of updates read
 	unsigned long gc_read_count;		  //Record gc caused by the read operation
 
-
 	//read hit
 	unsigned long gc_read_hit_cnt;
 	unsigned long update_read_hit_cnt;
@@ -324,7 +306,6 @@ struct ssd_info{
 	unsigned long erase_count;
 	unsigned long direct_erase_count;    //Record invalid blocks that are directly erased
 	int64_t gc_count;
-
 
 	//Advanced command read and write erase statistics
 	unsigned long m_plane_read_count;
@@ -350,7 +331,7 @@ struct ssd_info{
 	char statisticfilename[50];
 	char statistic_time_filename[50];
 	char statistic_size_filename[50];
-	char die_read_req_name[50];
+	//char die_read_req_name[50];
 
 	FILE * outputfile;
 	FILE * tracefile;
@@ -360,6 +341,8 @@ struct ssd_info{
 	FILE * sb_info;
 	FILE * die_read_req;
 	FILE * read_req;
+	FILE * write_req;
+	FILE* smt;
 
     struct parameter_value *parameter;   //SSD parameter
 	struct dram_info *dram;
@@ -367,43 +350,33 @@ struct ssd_info{
 	struct request *request_head;		 // the head of the request queue
 	struct request *request_tail;	     // the tail of the request queue
 	struct request *request_work;		 // the work point of the request queue
-
 	struct sub_request *subs_w_head;     //When using the full dynamic allocation, the first hanging on the ssd, etc. into the process function is linked to the corresponding channel read request queue
 	struct sub_request *subs_w_tail;
-
 	struct channel_info *channel_head;   //Points to the first address of the channel structure array
 
 	int warm_flash_flag;
-	unsigned int buffer_type;
-	unsigned int mapping_scheme;
-	unsigned int data_allocation;
-
 
 	//dftl 
-	unsigned int cache_hit;
-	unsigned int read_cache_hit_num;
-	unsigned int write_cache_hit_num;
-	unsigned int write_evict;
-	unsigned int read_evict;
-	unsigned int evict;
-	unsigned int cache_size;
+	unsigned int map_entry_per_subpage;
+	unsigned int read_tran_cache_hit;
+	unsigned int read_tran_cache_miss;
+	unsigned int write_tran_cache_hit;
+	unsigned int write_tran_cache_miss;
 
 	unsigned int data_read_cnt;
 	unsigned int tran_read_cnt;
 	unsigned int data_update_cnt;
 	unsigned int tran_update_cnt;
-	unsigned int tran_req_cnt;
-	unsigned int data_req_cnt;
 
 	unsigned int data_program_cnt;
 	unsigned int tran_program_cnt;
+
+	unsigned int debug_cnt;
 };
 
 
 struct channel_info{
 	int chip;                            //Indicates how many particles are on the bus
-	unsigned int token;                  //In the dynamic allocation, in order to prevent each assignment in the first chip need to maintain a token, each time from the token referred to the location of the distribution
-
 	int current_state;                   //channel has serveral states, including idle, command/address transfer,data transfer
 	int next_state;
 	int64_t current_time;                //Record the current time of the channel
@@ -413,11 +386,6 @@ struct channel_info{
 	struct sub_request *subs_r_tail;     //Channel on the read request queue tail, the new sub-request added to the tail
 	struct sub_request *subs_w_head;     //The write request on the channel queue header, the first service in the queue header request
 	struct sub_request *subs_w_tail;     //The write request queue on the channel, the new incoming request is added to the end of the queue
-	struct gc_operation *gc_command;     //Record the need to generate gc position
-
-	unsigned int gc_soft;
-	unsigned int gc_hard;
-	unsigned int gc_stop;
 	
 	unsigned int channel_busy_flag;
 	unsigned long channel_read_count;	 //Record the number of read and write wipes within the channel
@@ -434,9 +402,8 @@ struct chip_info{
 	unsigned int block_num_plane;       //indicate how many blocks in a plane
 	unsigned int page_num_block;        //indicate how many pages in a block
 	unsigned int subpage_num_page;      //indicate how many subpage in a page
-	unsigned int ers_limit;             //The number of times each block in the chip can be erased
-	unsigned int token;                 //In the dynamic allocation, in order to prevent each assignment in the first die need to maintain a token, each time from the token referred to the location of the distribution
-	
+	unsigned int ers_limit;             //The number of times each block in the chip can be erased              
+
 	int current_state;                  //chip has serveral states, including idle, command/address transfer,data transfer,unknown
 	int next_state;            
 	int64_t current_time;               //Record the current time of the chip
@@ -446,7 +413,6 @@ struct chip_info{
 	int64_t erase_begin_time;            
 	int64_t erase_cmplt_time;
 	int64_t erase_rest_time;
-	struct suspend_location *suspend_location;
 
 	unsigned long chip_read_count;      //Record the number of read/program/erase in the chip
 	unsigned long chip_program_count;
@@ -458,9 +424,6 @@ struct chip_info{
 
 
 struct die_info{
-
-	unsigned int token;                 //In the dynamic allocation, in order to prevent each assignment in the first die need to maintain a token, each time from the token referred to the location of the distribution
-
 	unsigned long die_read_count;		//Record the number of read/program/erase in the die
 	unsigned long die_program_count;
 	unsigned long die_erase_count;
@@ -469,7 +432,6 @@ struct die_info{
 	struct plane_info *plane_head;
 	
 };
-
 
 struct plane_info{
 	int add_reg_ppn;                    //Read, write address to the variable, the variable represents the address register. When the die is changed from busy to idle, clear the address
@@ -487,11 +449,6 @@ struct plane_info{
 	unsigned int test_pro_count;
 	unsigned int test_pre_count;
 
-	struct sub_request *subs_r_head;
-	struct sub_request *subs_r_tail;
-	struct sub_request *subs_w_head;
-	struct sub_request *subs_w_tail;
-
 	struct direct_erase *erase_node;    //Used to record can be directly deleted block number, access to the new ppn, whenever the invalid_page_num == 64, it will be added to the pointer, for the GC operation directly delete
 	struct blk_info *blk_head;
 };
@@ -505,6 +462,8 @@ struct blk_info{
 
 	unsigned int free_page_num;        //Record the number of pages in the block
 	unsigned int invalid_page_num;     //Record the number of invaild pages in the block
+	unsigned int invalid_subpage_num;  //unit is 4 KB
+
 	int last_write_page;               //Records the number of pages executed by the last write operation, and -1 indicates that no page has been written
 	struct page_info *page_head; 
 
@@ -515,7 +474,9 @@ struct blk_info{
 struct page_info{                      //lpn records the physical page stored in the logical page, when the logical page is valid, valid_state>0, free_state>0
 	double valid_state;                   //indicate the page is valid or invalid
 	int free_state;                    //each bit indicates the subpage is free or occupted. 1 indicates that the bit is free and 0 indicates that the bit is used
-	unsigned int lpn;                 
+	unsigned int lpn;
+	unsigned int luns[MAX_LUN_PER_PAGE];
+	unsigned int lun_state[MAX_LUN_PER_PAGE];
 	unsigned int written_count;        //Record the number of times the page was written
 };
 
@@ -529,17 +490,23 @@ struct super_block_info{
 };
 
 struct dram_info{
-	unsigned int dram_capacity;     
+	unsigned int dram_capacity;
 	int64_t current_time;
 
-	struct dram_parameter *dram_paramters;      
-	struct map_info *map;   //mapping for user data
-	struct map_info *tran_map;  //mapping for transaction data 
+	struct dram_parameter *dram_paramters;     
 
-	struct buffer_info *buffer; 
-	struct buffer_info *command_buffer[2];					 //used in advanced command buffer  ->DFTL: user data buffer and transaction data buffer
-	//struct buffer_info *static_plane_buffer[PLANE_NUMBER];   //used in advanced command buffer in static allocation
-	struct buffer_info *static_die_buffer[DIE_NUMBER];
+	struct map_info *map;   //mapping for user data
+	unsigned int data_buffer_capacity;
+	struct map_info * tran_map;  //gloabal translation derectory 
+	unsigned int mapping_buffer_capacity;
+
+	
+	struct buffer_info *data_buffer;  //data buffer 
+	struct buffer_info* mapping_buffer; //mapping_buffer
+	struct buffer_info *data_command_buffer;					 //data commond buffer
+	struct buffer_info *mapping_command_buffer;               //translation commond buffer
+
+	unsigned int mapping_node_count;
 };
 
 
@@ -558,11 +525,21 @@ typedef struct buffer_group{
 	struct buffer_group *LRU_link_pre;	// previous node in LRU list
 
 	unsigned int group;                 //the first data logic sector number of a group stored in buffer 
-	unsigned int stored;                //indicate the sector is stored in buffer or not. 1 indicates the sector is stored and 0 indicate the sector isn't stored.EX.  00110011 indicates the first, second, fifth, sixth sector is stored in buffer.
-	unsigned int dirty_clean;           //it is flag of the data has been modified, one bit indicates one subpage. EX. 0001 indicates the first subpage is dirty
-	int flag;			                //indicates if this node is the last 20% of the LRU list	
-	unsigned int page_type;				//buff page type:0--full_page  1--partial_page
-}buf_node;
+	unsigned int stored;                //indicate the sector is stored in buffer or not. 1 indicates the sector is stored and 0 indicate the sector isn't stored.EX.  00110011 indicates the first, second, fifth, sixth sector is stored in buffer.      
+
+	//for data buffer: chunk-level LRU list
+	unsigned int lsns[MAX_LSN_NUM];
+	int state[MAX_LSN_NUM];
+	unsigned int lsn_count;
+
+	/*
+	  for mapppingn buffer: DFT with page-level replacement
+	  max entry number per page = 4 KB / 4 B = 1 K = 2^10
+	 */
+    //char bitmap[128]; //2^10 bits = 2^7 B , indicate whether this lpn is cache in mapping buffer. Actually, all mapping entries  are kept in mapping buffer
+	//unsigned int dirty; // indicate whether the mapping node (page) is dirty or not 
+	unsigned int entry_cnt;  // record the numner of mapping entries in the cached node
+}data_buf_node;
 
 
 struct dram_parameter{
@@ -575,10 +552,6 @@ struct dram_parameter{
 
 struct map_info{
 	struct entry *map_entry;            // each entry indicate a mapping information
-	struct buffer_info *attach_info;	// info about attach map
-	int cache_max;             // for cache replacement 
-	unsigned int cached_lpns[MAX_CACHE_SIZE];
-	unsigned int cache_num;      //entry number in the cache
 };
 
 
@@ -611,7 +584,7 @@ struct request{
 
 
 struct sub_request{
-	unsigned int lpn;                  //The logical page number of the sub request
+	unsigned int lpn;                  //The logical page number of the sub request for read reqeusts
 	unsigned int ppn;                  //The physical page number of the request
 	unsigned int operation;            //Indicates the type of the sub request, except that read 1 write 0, there are erase, two plane and other operations
 	int size;
@@ -625,48 +598,22 @@ struct sub_request{
 	int64_t begin_time;               //Sub request start time
 	int64_t complete_time;            //Record the processing time of the sub-request, the time that the data is actually written or read out
 
-	unsigned int req_type;   //mark sub request type
+	unsigned int req_type;          //mark sub request type, user request and mapping reqeust
+	unsigned int luns[MAX_LUN_PER_PAGE];
+	unsigned int lun_count;
+	unsigned int lun_state[MAX_LUN_PER_PAGE];
 
 	struct local *location;           //In the static allocation and mixed allocation mode, it is known that lpn knows that the lpn is assigned to that channel, chip, die, plane, which is used to store the calculated address
 	struct sub_request *next_subs;    //Points to the child request that belongs to the same request
 	struct sub_request *next_node;    //Points to the next sub-request structure in the same channel
-	struct sub_request *update_0;       //Update the write request, mount this pointer on
-	struct sub_request *update_1;
-	struct sub_request *update_2;
-	struct sub_request *update_3;
-	struct sub_request *update_4;
-	struct sub_request *update_5;
-	struct sub_request *update_6;
-	struct sub_request *update_7;
-	struct sub_request *update_8;
-	struct sub_request *update_9;
-	struct sub_request *update_10;
-	struct sub_request *update_11;
-	struct sub_request *update_12;
-	struct sub_request *update_13;
-	struct sub_request *update_14;
-	struct sub_request *update_15;
-	struct sub_request *update_16;
-	struct sub_request *update_17;
-	struct sub_request *update_18;
-	struct sub_request *update_19;
-	struct sub_request *update_20;
-	struct sub_request *update_21;
-	struct sub_request *update_22;
-	struct sub_request *update_23;
-	struct sub_request *update_24;
-	struct sub_request *update_25;
-	struct sub_request *update_26;
-	struct sub_request *update_27;
-	struct sub_request *update_28;
-	struct sub_request *update_29;
-	struct sub_request *update_30;
-	struct sub_request *update_31;
-	struct sub_request *update_32;
-
+	struct sub_request *update_0;       //Hard coded update pointer
+	struct sub_request* update_1;      
+	struct sub_request* update_2;       
+	struct sub_request* update_3;
+	struct sub_request* tran_read;
 	unsigned int update_cnt;
-	struct request *total_request;
 
+	struct request *total_request;
 	unsigned int update_read_flag;    //Update the read flag
 	unsigned int mutliplane_flag;
 	unsigned int oneshot_flag;
@@ -678,14 +625,14 @@ struct sub_request{
 
 	//gc req flag
 	int gc_flag;
-
 	int read_flag;
 };
 
 
 struct parameter_value{
 	unsigned int chip_num;          //the number of chip in ssd
-	unsigned int dram_capacity;     //Record the DRAM capacity in SSD
+	unsigned int data_dram_capacity;  //Record the DRAM capacity for data buffer in SSD
+	unsigned int mapping_dram_capacity; //Record the DRAM capacity for mapping cache in SSD
 	unsigned int cpu_sdram;         //sdram capacity in cpu
 
 	unsigned int channel_number;    //Record the number of channels in the SSD, each channel is a separate bus
@@ -699,6 +646,7 @@ struct parameter_value{
 
 	unsigned int page_capacity;
 	unsigned int subpage_capacity;
+	unsigned int mapping_entry_size;
 
 
 	unsigned int ers_limit;         //Record the number of erasable blocks per block
@@ -756,14 +704,7 @@ struct entry{
 	unsigned int pn;                //Physical number, either a physical page number, a physical subpage number, or a physical block number
 	int state;                      //The hexadecimal representation is 0000-FFFF, and each bit indicates whether the corresponding subpage is valid (page mapping). 
 	unsigned int cache_valid;       // 0 means no cached; 1 means cacheed.
-	unsigned int cache_age;         //is for cache replacement
-	unsigned int update;            //is for judge wether the entry is dirty
-
-	//used in aware workloads
-	long long write_count;
-	long long read_count;
-	unsigned int type;
-	unsigned int mount_type;
+	unsigned int dirty;            //is for judge wether the entry is dirty in DFTL
 };
 
 
@@ -792,35 +733,6 @@ struct direct_erase{
 	struct direct_erase *next_node;
 };
 
-
-/**************************************************************************************
- *When a GC operation is generated, the structure is hung on the corresponding channel 
- *and the GC operation command is issued when the channel is idle
-***************************************************************************************/
-struct gc_operation{  
-	unsigned int channel;
-	unsigned int chip;
-	unsigned int die;
-	unsigned int plane;
-	unsigned int block;           //This parameter is used only in the interruptable gc function (gc_interrupt), used to record the near-identified target block number
-	unsigned int page;            //This parameter is used only in the interruptable gc function (gc_interrupt), used to record the page number of the data migration that has been completed
-	unsigned int state;           //Record the status of the current gc request
-	unsigned int priority;        //Record the priority of the gc operation, 1 that can not be interrupted, 0 that can be interrupted (soft threshold generated by the gc request)
-	unsigned int hard;
-	unsigned int soft;
-
-	struct gc_operation *next_node;
-};
-
-struct suspend_location{
-	unsigned int channel;
-	unsigned int chip;
-	unsigned int die;
-	unsigned int plane[2];
-	unsigned int block[2];
-};
-
-
 struct allocation_info                       //记录分配信息
 {
 	unsigned int channel;
@@ -831,7 +743,7 @@ struct allocation_info                       //记录分配信息
 	struct buffer_info * aim_command_buffer;
 };
 
-struct ssd_info *initiation(struct ssd_info *, unsigned int off);
+struct ssd_info *initiation(struct ssd_info *);
 struct parameter_value *load_parameters(char parameter_file[30]);
 struct page_info * initialize_page(struct page_info * p_page);
 struct blk_info * initialize_block(struct blk_info * p_block,struct parameter_value *parameter);
@@ -839,7 +751,7 @@ struct plane_info * initialize_plane(struct plane_info * p_plane,struct paramete
 struct die_info * initialize_die(struct die_info * p_die,struct parameter_value *parameter,long long current_time );
 struct chip_info * initialize_chip(struct chip_info * p_chip,struct parameter_value *parameter,long long current_time );
 struct ssd_info * initialize_channels(struct ssd_info * ssd );
-struct dram_info * initialize_dram(struct ssd_info * ssd, unsigned int off);
+struct dram_info * initialize_dram(struct ssd_info * ssd);
 void initialize_statistic(struct ssd_info * ssd);
 void show_sb_info(struct ssd_info * ssd);
 void intialize_sb(struct ssd_info * ssd);
@@ -848,7 +760,14 @@ int Get_Chip(struct ssd_info * ssd, int i);
 int Get_Die(struct ssd_info * ssd, int i);
 int Get_Plane(struct ssd_info * ssd, int i);
 int Get_Read_Request_Cnt(struct ssd_info *ssd, unsigned int chan, unsigned int chip, unsigned int die);
-void Show_Die_Read_Req(struct ssd_info *ssd);
 Status Read_cnt_4_Debug(struct ssd_info *ssd);
+Status Write_cnt(struct ssd_info* ssd, unsigned int chan);
+Status Read_cnt(struct ssd_info* ssd, unsigned int chan);
+Status Debug_loc_allocation(struct ssd_info* ssd, unsigned int pun, unsigned int channel, unsigned int chip, unsigned int die, unsigned int plane, unsigned int block, unsigned int page, unsigned int unit);
+struct local* find_location_pun(struct ssd_info* ssd, unsigned int pun);
+
+void file_assert(int error, char *s);
+void alloc_assert(void *p, char *s);
+void trace_assert(int64_t time_t, int device, unsigned int lsn, int size, int ope);
 
 #endif //_INITIALIZE_H_
