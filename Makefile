@@ -18,8 +18,9 @@ BINARY ?= $(BUILD_DIR)/$(NAME)$(SO)
 CC = gcc
 LD = gcc
 INCLUDES  = $(addprefix -I, $(INC_DIR))
-CFLAGS += -O2 -MMD -Wall -Werror -g -ggdb3 $(INCLUDES) -fomit-frame-pointer
+# CFLAGS += -O2 -MMD -Wall -Werror -ggdb3 $(INCLUDES) -fomit-frame-pointer
 # CFLAGS += -O2 -MMD -ggdb3 $(INCLUDES) -fomit-frame-pointer
+CFLAGS += -Wall -Werror -g -ggdb3 $(INCLUDES)
 
 # Files to be compiled
 SRCS = $(shell find src/ -name "*.c")
@@ -34,7 +35,7 @@ $(OBJ_DIR)/%.o: src/%.c
 # Depencies
 -include $(OBJS:.o=.d)
 
-.PHONY: app run clean
+.PHONY: app run clean debug
 app: $(BINARY)
 
 # Command to execute NEMU
@@ -49,3 +50,6 @@ run: $(BINARY)
 
 clean: 
 	@rm -rf build/
+
+debug:
+	@gdb $(3DSIM_EXEC)

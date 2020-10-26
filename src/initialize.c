@@ -52,7 +52,8 @@ struct ssd_info *initiation(struct ssd_info *ssd)
 	char buffer[300];
 	struct parameter_value *parameters;
 	FILE *fp=NULL;
-	
+
+	ssd->gc_flag = false;
 
 	//Import the configuration file for ssd
 	parameters=load_parameters(ssd->parameterfilename);

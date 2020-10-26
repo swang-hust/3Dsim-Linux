@@ -528,9 +528,11 @@ Status find_active_superblock(struct ssd_info *ssd,struct request *req, unsigned
 	judge whether GC is triggered
 	note need to reduce the influence of mixture of GC data and user data
     */
-	if (ssd->free_sb_cnt <= MIN_SB_RATE * ssd->sb_cnt)
+	while (ssd->free_sb_cnt <= MIN_SB_RATE * ssd->sb_cnt && !ssd->gc_flag)
 	{
+		ssd->gc_flag = true;
 		SuperBlock_GC(ssd, req);
+		ssd->gc_flag = false;
 	}
 
 	return SUCCESS;

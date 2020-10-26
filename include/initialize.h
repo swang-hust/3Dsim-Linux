@@ -9,6 +9,7 @@
 #include <ctype.h>
 #include <errno.h>
 #include <assert.h>
+#include <stdbool.h>
 
 #include "avlTree.h"
 
@@ -139,7 +140,7 @@
 #define CHANNEL_LEVEL 4
 
 #define NAX_SB_SIZE 128
-#define MIN_SB_RATE 0.1
+#define MIN_SB_RATE 0.2
 #define INVALID_PPN -1                                                
 
 //calculate power
@@ -257,6 +258,8 @@ struct ssd_info{
 	unsigned int plane_count;
 	int warm_flash_cmplt;
 	
+	bool gc_flag;
+
 	//superblock info
 	int sb_cnt;
 	int free_sb_cnt;
