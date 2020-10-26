@@ -7,10 +7,10 @@
 #include "ssd.h"
 
 int secno_num_per_page, secno_num_sub_page;
-char *parameters_file ="page_2MB.parameters";
-char *trace_file ="r_70_r70w30.ascii";
-char* result_file_statistic = "r_70_r70w30_sftl.stat";
-char* result_file_ex = "r_70_r70w30_sftl.out";
+char *parameters_file ="page.parameters";
+char *trace_file ="traces/fileserver64.trace";
+char* result_file_statistic = "output/fileserver64.stat";
+char* result_file_ex = "output/fileserver64.out";
 
 
 /********************************************************************************************************************************
@@ -130,6 +130,7 @@ struct ssd_info *warm_flash(struct ssd_info *ssd)
 		{
 			if (ssd->parameter->data_dram_capacity != 0)
 			{
+				//printf("ssd->parameter->data_dram_capacity = %u\n", ssd->parameter->data_dram_capacity);
 				if (ssd->buffer_full_flag == 0)				//buffer don't block,it can be handle.
 				{
 					buffer_management(ssd);

@@ -139,7 +139,7 @@
 #define CHANNEL_LEVEL 4
 
 #define NAX_SB_SIZE 128
-#define MIN_SB_RATE 0.05
+#define MIN_SB_RATE 0.1
 #define INVALID_PPN -1                                                
 
 //calculate power

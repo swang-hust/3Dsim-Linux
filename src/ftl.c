@@ -507,6 +507,7 @@ Status find_active_superblock(struct ssd_info *ssd,struct request *req, unsigned
 	if (min_sb == -1)
 	{
 		printf("No Free Blocks\n");
+		return FALSE;
 	}
 	//set open superblock 
 	ssd->open_sb[type] = ssd->sb_pool + min_sb;

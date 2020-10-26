@@ -56,3 +56,10 @@ dkms.conf
 traces/
 *.ascii
 *.trace
+
+# Output files
+output/
+
+# vscode files
+*.vscode/
+ 

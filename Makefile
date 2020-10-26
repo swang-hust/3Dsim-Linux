@@ -18,7 +18,7 @@ BINARY ?= $(BUILD_DIR)/$(NAME)$(SO)
 CC = gcc
 LD = gcc
 INCLUDES  = $(addprefix -I, $(INC_DIR))
-CFLAGS += -O2 -MMD -Wall -Werror -ggdb3 $(INCLUDES) -fomit-frame-pointer
+CFLAGS += -O2 -MMD -Wall -Werror -g -ggdb3 $(INCLUDES) -fomit-frame-pointer
 # CFLAGS += -O2 -MMD -ggdb3 $(INCLUDES) -fomit-frame-pointer
 
 # Files to be compiled

@@ -77,10 +77,10 @@ struct ssd_info *initiation(struct ssd_info *ssd)
    //initialize the superblock info 
 	intialize_sb(ssd);
 
-	ssd->sb_info = fopen("superblock_info.txt", "w");
-	ssd->read_req = fopen("read requests.txt", "w");
-	ssd->write_req = fopen("write requests.txt","w");
-	ssd->smt = fopen("smt informnation.txt","w");
+	ssd->sb_info = fopen("output/superblock_info.txt", "w");
+	ssd->read_req = fopen("output/read requests.txt", "w");
+	ssd->write_req = fopen("output/write requests.txt","w");
+	ssd->smt = fopen("output/smt informnation.txt","w");
 
 	//ssd->die_read_req = fopen("Read_Request_Count_Per_Die.txt", "w");
 	//show sb info 
