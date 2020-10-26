@@ -232,7 +232,7 @@ Status migration_horizon(struct ssd_info *ssd, struct request * req, unsigned in
 					if (transer > 0)
 					{
 						time = ssd->channel_head[chan].chip_head[chip].next_state_predict_time + transer * ssd->parameter->subpage_capacity * ssd->parameter->time_characteristics.tRC;
-						ssd->channel_head[chan].next_state_predict_time = (ssd->channel_head[chan].next_state_predict_time > time) ? time : ssd->channel_head[chan].next_state_predict_time;
+						ssd->channel_head[chan].next_state_predict_time = (ssd->channel_head[chan].next_state_predict_time > time) ? ssd->channel_head[chan].next_state_predict_time : time;
 					}
 			
 				}
