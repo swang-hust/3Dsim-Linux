@@ -32,12 +32,10 @@ extern int keyCompareFunc(TREE_NODE *p , TREE_NODE *p1)
 
 extern int freeFunc(TREE_NODE *pNode)
 {
-	
 	if(pNode!=NULL)
 	{
 		free((void *)pNode);
 	}
-	
 	
 	pNode=NULL;
 	return 1;
@@ -59,7 +57,7 @@ struct ssd_info *initiation(struct ssd_info *ssd)
 	//Import the configuration file for ssd
 	parameters=load_parameters(ssd->parameterfilename);
 	ssd->parameter=parameters;
-	ssd->min_lsn=0x7fffffff;
+	ssd->min_lsn = INT32_MAX;
 	ssd->page=ssd->parameter->chip_num*ssd->parameter->die_chip*ssd->parameter->plane_die*ssd->parameter->block_plane*ssd->parameter->page_block;
 	ssd->parameter->update_reqeust_max = (ssd->parameter->data_dram_capacity / ssd->parameter->page_capacity) / INDEX;
 	secno_num_per_page = ssd->parameter->page_capacity / SECTOR;

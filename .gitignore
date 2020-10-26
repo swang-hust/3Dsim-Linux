@@ -51,3 +51,8 @@ modules.order
 Module.symvers
 Mkfile.old
 dkms.conf
+
+# Trace files
+traces/
+*.ascii
+*.trace
