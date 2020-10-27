@@ -352,8 +352,6 @@ void trace_output(struct ssd_info* ssd){
 			{
 				if (req->next_node == NULL)
 				{
-					free(req->need_distr_flag);
-					req->need_distr_flag = NULL;
 					free(req);
 					req = NULL;
 					ssd->request_queue = NULL;
@@ -365,8 +363,6 @@ void trace_output(struct ssd_info* ssd){
 					ssd->request_queue = req->next_node;
 					pre_node = req;
 					req = req->next_node;
-					free(pre_node->need_distr_flag);
-					pre_node->need_distr_flag = NULL;
 					free((void *)pre_node);
 					pre_node = NULL;
 					ssd->request_queue_length--;
@@ -377,8 +373,6 @@ void trace_output(struct ssd_info* ssd){
 				if (req->next_node == NULL)
 				{
 					pre_node->next_node = NULL;
-					free(req->need_distr_flag);
-					req->need_distr_flag = NULL;
 					free(req);
 					req = NULL;
 					ssd->request_tail = pre_node;
@@ -387,8 +381,6 @@ void trace_output(struct ssd_info* ssd){
 				else
 				{
 					pre_node->next_node = req->next_node;
-					free(req->need_distr_flag);
-					req->need_distr_flag = NULL;
 					free((void *)req);
 					req = pre_node->next_node;
 					ssd->request_queue_length--;
@@ -465,8 +457,6 @@ void trace_output(struct ssd_info* ssd){
 				{
 					if (req->next_node == NULL)
 					{
-						free(req->need_distr_flag);
-						req->need_distr_flag = NULL;
 						free(req);
 						req = NULL;
 						ssd->request_queue = NULL;
@@ -478,8 +468,6 @@ void trace_output(struct ssd_info* ssd){
 						ssd->request_queue = req->next_node;
 						pre_node = req;
 						req = req->next_node;
-						free(pre_node->need_distr_flag);
-						pre_node->need_distr_flag = NULL;
 						free(pre_node);
 						pre_node = NULL;
 						ssd->request_queue_length--;
@@ -490,8 +478,6 @@ void trace_output(struct ssd_info* ssd){
 					if (req->next_node == NULL)
 					{
 						pre_node->next_node = NULL;
-						free(req->need_distr_flag);
-						req->need_distr_flag = NULL;
 						free(req);
 						req = NULL;
 						ssd->request_tail = pre_node;
@@ -500,8 +486,6 @@ void trace_output(struct ssd_info* ssd){
 					else
 					{
 						pre_node->next_node = req->next_node;
-						free(req->need_distr_flag);
-						req->need_distr_flag = NULL;
 						free(req);
 						req = pre_node->next_node;
 						ssd->request_queue_length--;
@@ -524,35 +508,10 @@ void delete_update(struct ssd_info *ssd, struct sub_request *sub)
 
 	for (i=0;i<sub->update_cnt;i++)
 	{
-		switch (i)
-		{
-		case 0:
-			free(sub->update_0->location);
-			sub->update_0->location = NULL;
-			free(sub->update_0);
-			sub->update_0 = NULL;
-			break;
-		case 1:
-			free(sub->update_1->location);
-			sub->update_1->location = NULL;
-			free(sub->update_1);
-			sub->update_1 = NULL;
-			break;
-		case 2:
-			free(sub->update_2->location);
-			sub->update_2->location = NULL;
-			free(sub->update_2);
-			sub->update_2 = NULL;
-			break;
-		case 3:
-			free(sub->update_3->location);
-			sub->update_3->location = NULL;
-			free(sub->update_3);
-			sub->update_3 = NULL;
-			break;
-		default:
-			break;
-		}
+		free(sub->update[i]->location);
+		sub->update[i]->location = NULL;
+		free(sub->update[i]);
+		sub->update[i] = NULL;
 	}
 	sub->update_cnt = 0;
 }
@@ -573,7 +532,7 @@ void statistic_output(struct ssd_info *ssd)
 
 	for(i = 0;i<ssd->parameter->channel_number;i++)
 	{
-		for (p = 0; p < ssd->parameter->chip_channel[i]; p++)
+		for (p = 0; p < ssd->parameter->chip_channel; p++)
 		{
 			for (j = 0; j < ssd->parameter->die_chip; j++)
 			{
@@ -827,7 +786,7 @@ void free_all_node(struct ssd_info *ssd)
 
 	for (i = 0; i < ssd->parameter->channel_number; i++)
 	{
-		for (j = 0; j < ssd->parameter->chip_channel[i]; j++)
+		for (j = 0; j < ssd->parameter->chip_channel; j++)
 		{
 			for (k = 0; k < ssd->parameter->die_chip; k++)
 			{
@@ -885,7 +844,7 @@ struct ssd_info *make_aged(struct ssd_info *ssd)
 		//Threshold indicates how many pages in a plane need to be set to invaild in advance
 		threshould=(int)(ssd->parameter->block_plane*ssd->parameter->page_block*ssd->parameter->aged_ratio);  
 		for (i=0;i<ssd->parameter->channel_number;i++)
-			for (j=0;j<ssd->parameter->chip_channel[i];j++)
+			for (j=0;j<ssd->parameter->chip_channel;j++)
 				for (k=0;k<ssd->parameter->die_chip;k++)
 					for (l=0;l<ssd->parameter->plane_die;l++)
 					{  
@@ -939,7 +898,7 @@ struct ssd_info *pre_process_write(struct ssd_info *ssd)
 
 	for (i = 0; i<ssd->parameter->channel_number; i++)
 	{
-		for (m = 0; m < ssd->parameter->chip_channel[i]; m++)
+		for (m = 0; m < ssd->parameter->chip_channel; m++)
 		{
 			for (j = 0; j < ssd->parameter->die_chip; j++)
 			{

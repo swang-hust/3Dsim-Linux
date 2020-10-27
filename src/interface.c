@@ -31,7 +31,7 @@ int get_requests(struct ssd_info *ssd)
 	if (ssd->trace_over_flag == 1)
 	{
 		nearest_event_time = find_nearest_event(ssd);
-		if (nearest_event_time != 0x7fffffffffffffff)
+		if (nearest_event_time != INT64_MAX)
 			ssd->current_time = nearest_event_time;
 		else
 			ssd->current_time += 5000000;
@@ -51,11 +51,8 @@ int get_requests(struct ssd_info *ssd)
 		if (feof(ssd->tracefile))      //if the end of trace
 			break;
 
-		//if (ssd->warm_flash_cmplt == 0 && ope == 0)
-			//continue;
-
-		if (ssd->request_lz_count > 5000000)
-			ssd->trace_over_flag = 1;
+		// if (ssd->request_lz_count > 5000000)
+		// 	ssd->trace_over_flag = 1;
 
 		if (ssd->parameter->data_dram_capacity == 0)
 			break;
@@ -74,10 +71,12 @@ int get_requests(struct ssd_info *ssd)
 	if (lsn>ssd->max_lsn)
 		ssd->max_lsn = lsn;
 
-	large_lsn = (int)((secno_num_per_page*ssd->parameter->page_block*ssd->parameter->block_plane*ssd->parameter->plane_die*ssd->parameter->die_chip*ssd->parameter->chip_num)/(1 + ssd->parameter->overprovide));
+	large_lsn = (int)((secno_num_per_page*ssd->parameter->page_block*ssd->parameter->block_plane
+		*ssd->parameter->plane_die*ssd->parameter->die_chip*ssd->parameter->chip_channel * ssd->parameter->channel_number)
+		/(1 + ssd->parameter->overprovide));
 	lsn = lsn%large_lsn;
 
-	nearest_event_time = find_nearest_event(ssd);  //Find the time of the latest event
+	nearest_event_time = find_nearest_event(ssd);
 
 
 	/**********************************************************************
@@ -140,8 +139,8 @@ int get_requests(struct ssd_info *ssd)
 
 	if (time_t < 0)
 	{
-		printf("error!\n");
-		while (1){}
+		printf("Error[%s]: (time_t == %ld) < 0\n", __FUNCTION__, time_t);
+		while (true){}
 	}
 
 
@@ -161,16 +160,13 @@ int get_requests(struct ssd_info *ssd)
 	request1->size = size;
 
 	if (ssd->warm_flash_cmplt == 0)
-		ope = 0;
+		ope = WRITE;
 
 	request1->operation = ope;
 	request1->begin_time = time_t;
 	request1->response_time = 0;
-//	request1->request_read_num = ssd->request_lz_count;
 	request1->next_node = NULL;
-	request1->distri_flag = 0;              // indicate whether this request has been distributed already
 	request1->subs = NULL;
-	request1->need_distr_flag = NULL;
 	request1->complete_lsn_count = 0;       //record the count of lsn served by buffer
 	filepoint = ftell(ssd->tracefile);		// set the file point
 
@@ -196,13 +192,11 @@ int get_requests(struct ssd_info *ssd)
 
 	if (request1->operation == READ)             //Calculate the average request size ,1 for read 0 for write
 	{
-		ssd->ave_read_size = (ssd->ave_read_size*ssd->read_request_count + request1->size) / (ssd->read_request_count + 1);
-		ssd->test_count++;
-		request1->request_read_num = ssd->test_count;
+		ssd->ave_read_size = (ssd->ave_read_size * ssd->read_request_count + request1->size) / (ssd->read_request_count + 1);
 	}
 	else
 	{
-		ssd->ave_write_size = (ssd->ave_write_size*ssd->write_request_count + request1->size) / (ssd->write_request_count + 1);
+		ssd->ave_write_size = (ssd->ave_write_size * ssd->write_request_count + request1->size) / (ssd->write_request_count + 1);
 	}
 
 
@@ -238,7 +232,7 @@ int64_t find_nearest_event(struct ssd_info *ssd)
 			if (time1>ssd->channel_head[i].next_state_predict_time)
 				if (ssd->channel_head[i].next_state_predict_time > ssd->current_time)
 					time1 = ssd->channel_head[i].next_state_predict_time;
-		for (j = 0; j<ssd->parameter->chip_channel[i]; j++)
+		for (j = 0; j<ssd->parameter->chip_channel; j++)
 		{
 			if ((ssd->channel_head[i].chip_head[j].next_state == CHIP_IDLE) || (ssd->channel_head[i].chip_head[j].next_state == CHIP_DATA_TRANSFER))
 				if (time2>ssd->channel_head[i].chip_head[j].next_state_predict_time)

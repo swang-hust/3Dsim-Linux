@@ -16,7 +16,7 @@ Status service_2_read(struct ssd_info* ssd, unsigned int channel)
 	unsigned int max_sub_num;
 
 	subs_count = 0;
-	max_sub_num = ssd->parameter->chip_channel[channel]*ssd->parameter->die_chip * ssd->parameter->plane_die * PAGE_INDEX;
+	max_sub_num = ssd->parameter->chip_channel*ssd->parameter->die_chip * ssd->parameter->plane_die * PAGE_INDEX;
 
 	sub_r_request = (struct sub_request**)malloc(max_sub_num * sizeof(struct sub_request*));
 	alloc_assert(sub_r_request, "sub_r_request");
@@ -287,27 +287,8 @@ int IS_Update_Done(struct ssd_info* ssd, struct sub_request* sub)
 		return TRUE;
 	for (i = 0; i < sub->update_cnt; i++)
 	{
-		switch (i)
-		{
-		case 0:
-			if (sub->update_0->current_state != SR_COMPLETE && sub->update_0->next_state != SR_COMPLETE)
-				return FALSE;
-			break;
-		case 1:
-			if (sub->update_1->current_state != SR_COMPLETE && sub->update_1->next_state != SR_COMPLETE)
-				return FALSE;
-			break;
-		case 2:
-			if (sub->update_2->current_state != SR_COMPLETE && sub->update_2->next_state != SR_COMPLETE)
-				return FALSE;
-			break;
-		case 3:
-			if (sub->update_3->current_state != SR_COMPLETE && sub->update_3->next_state != SR_COMPLETE)
-				return FALSE;
-			break;
-		default:
-			break;
-		}
+		if (sub->update[i]->current_state != SR_COMPLETE && sub->update[i]->next_state != SR_COMPLETE)
+			return FALSE;
 	}
 	return TRUE;
 }

@@ -19,7 +19,7 @@ struct ssd_info *handle_read_cache(struct ssd_info *ssd, struct request *req);
 
 Status creat_one_read_sub_req(struct ssd_info* ssd, struct sub_request* sub);
 Status update_read_request(struct ssd_info* ssd, unsigned int lpn, unsigned int state, struct sub_request* req, unsigned int commond_buffer_type);
-Status read_reqeust(struct ssd_info* ssd, unsigned int lpn, struct request* req, unsigned int state, unsigned int buffer_commond_type);
+Status read_request(struct ssd_info* ssd, unsigned int lpn, struct request* req, unsigned int state, unsigned int buffer_commond_type);
 struct sub_request* tran_read_sub_reqeust(struct ssd_info* ssd, unsigned int lpn);
 
 struct ssd_info* insert2_mapping_command_buffer_in_order(struct ssd_info* ssd, unsigned int lpn, struct request* req);

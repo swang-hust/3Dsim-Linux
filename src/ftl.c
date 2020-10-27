@@ -12,9 +12,8 @@ extern int secno_num_per_page, secno_num_sub_page;
 unsigned int find_pun(struct ssd_info* ssd, unsigned int channel, unsigned int chip, unsigned int die, unsigned int plane, unsigned int block, unsigned int page, unsigned int unit)
 {
 	unsigned int ppn = 0, pun = 0;
-	unsigned int i = 0;
 	int page_plane = 0, page_die = 0, page_chip = 0;
-	int page_channel[100];
+	int page_channel;
 
 #ifdef DEBUG
 	printf("enter find_psn,channel:%d, chip:%d, die:%d, plane:%d, block:%d, page:%d\n", channel, chip, die, plane, block, page);
@@ -26,21 +25,11 @@ unsigned int find_pun(struct ssd_info* ssd, unsigned int channel, unsigned int c
 	page_plane = ssd->parameter->page_block * ssd->parameter->block_plane;
 	page_die = page_plane * ssd->parameter->plane_die;
 	page_chip = page_die * ssd->parameter->die_chip;
+	page_channel = page_chip * ssd->parameter->chip_channel;
 
-	while (i < ssd->parameter->channel_number)
-	{
-		page_channel[i] = ssd->parameter->chip_channel[i] * page_chip;
-		i++;
-	}
-
-	i = 0;
-	while (i < channel)
-	{
-		ppn = ppn + page_channel[i];
-		i++;
-	}
-	ppn = ppn + page_chip * chip + page_die * die + page_plane * plane + block * ssd->parameter->page_block + page;
+	ppn = page_channel * channel + page_chip * chip + page_die * die + page_plane * plane + block * ssd->parameter->page_block + page;
 	pun = ppn * ssd->parameter->subpage_page + unit;
+
 	return pun;
 }
 
@@ -52,9 +41,8 @@ unsigned int find_pun(struct ssd_info* ssd, unsigned int channel, unsigned int c
 unsigned int find_ppn(struct ssd_info * ssd, unsigned int channel, unsigned int chip, unsigned int die, unsigned int plane, unsigned int block, unsigned int page)
 {
 	unsigned int ppn = 0;
-	unsigned int i = 0;
 	int page_plane = 0, page_die = 0, page_chip = 0;
-	int page_channel[100];                 
+	int page_channel;                 
 
 #ifdef DEBUG
 	printf("enter find_psn,channel:%d, chip:%d, die:%d, plane:%d, block:%d, page:%d\n", channel, chip, die, plane, block, page);
@@ -66,23 +54,13 @@ unsigned int find_ppn(struct ssd_info * ssd, unsigned int channel, unsigned int 
 	page_plane = ssd->parameter->page_block*ssd->parameter->block_plane;
 	page_die = page_plane*ssd->parameter->plane_die;
 	page_chip = page_die*ssd->parameter->die_chip;
-	while (i<ssd->parameter->channel_number)
-	{
-		page_channel[i] = ssd->parameter->chip_channel[i] * page_chip;
-		i++;
-	}
+	page_channel = page_chip*ssd->parameter->chip_channel;
 
 	/****************************************************************************
 	*Calculate the physical page number ppn, ppn is the sum of the number of pages 
 	*in channel, chip, die, plane, block, page
 	*****************************************************************************/
-	i = 0;
-	while (i<channel)
-	{
-		ppn = ppn + page_channel[i];
-		i++;
-	}
-	ppn = ppn + page_chip*chip + page_die*die + page_plane*plane + block*ssd->parameter->page_block + page;
+	ppn = page_channel*channel + page_chip*chip + page_die*die + page_plane*plane + block*ssd->parameter->page_block + page;
 
 	return ppn;
 }
@@ -111,7 +89,7 @@ struct local *find_location(struct ssd_info *ssd, unsigned int pun)
 	page_plane = ssd->parameter->page_block*ssd->parameter->block_plane;
 	page_die = page_plane*ssd->parameter->plane_die;
 	page_chip = page_die*ssd->parameter->die_chip;
-	page_channel = page_chip*ssd->parameter->chip_channel[0];
+	page_channel = page_chip*ssd->parameter->chip_channel;
 
 	location->channel = ppn / page_channel;
 	location->chip = (ppn%page_channel) / page_chip;
@@ -133,7 +111,7 @@ struct local* find_location_pun(struct ssd_info* ssd, unsigned int pun)
 	unit_plane = unit_block * ssd->parameter->block_plane;
 	unit_die   = unit_plane * ssd->parameter->plane_die;
 	unit_chip = unit_die * ssd->parameter->die_chip;
-	unit_channel = unit_chip * ssd->parameter->chip_channel[0];  // work under the condition where all channels are armed with the same number of chips
+	unit_channel = unit_chip * ssd->parameter->chip_channel;
 
 #ifdef DEBUG
 	printf("enter find_location\n");
@@ -192,7 +170,7 @@ Status migration_horizon(struct ssd_info *ssd, struct request * req, unsigned in
 		{
 			for (chan = 0; chan < ssd->parameter->channel_number; chan++)
 			{
-				for (chip = 0; chip < ssd->parameter->chip_channel[chan]; chip++)
+				for (chip = 0; chip < ssd->parameter->chip_channel; chip++)
 				{
 					ssd->channel_head[chan].chip_head[chip].next_state_predict_time += ssd->parameter->time_characteristics.tR;
 					transer = 0;
@@ -253,7 +231,7 @@ Status migration_horizon(struct ssd_info *ssd, struct request * req, unsigned in
 	}
 	for (i = 0; i < ssd->parameter->channel_number; i++)
 	{
-		for (j = 0; j < ssd->parameter->chip_channel[i]; j++)
+		for (j = 0; j < ssd->parameter->chip_channel; j++)
 		{
 			ssd->channel_head[i].chip_head[j].next_state_predict_time += ssd->parameter->time_characteristics.tBERS;
 		}

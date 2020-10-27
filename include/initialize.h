@@ -253,7 +253,6 @@ struct ssd_info{
 	int64_t request_lz_count;			 //trace request count
 	unsigned int update_sub_request;
 	unsigned int page_count;
-	int test_count;
 	unsigned int die_token;
 	unsigned int plane_count;
 	int warm_flash_cmplt;
@@ -570,14 +569,10 @@ struct request{
 	unsigned int operation;            //The type of request, 1 for the read, 0 for the write
 	unsigned int cmplt_flag;		   //Whether the request is executed, 0 means no execution, 1 means it has been executed
 
-	unsigned int* need_distr_flag;
 	unsigned int complete_lsn_count;   //record the count of lsn served by buffer
-
-	int distri_flag;		           // indicate whether this request has been distributed already
 
 	int64_t begin_time;
 	int64_t response_time;
-	int64_t request_read_num;
 
 	struct sub_request *subs;          //Record all sub-requests belonging to the request
 	struct request *next_node;        
@@ -607,10 +602,7 @@ struct sub_request{
 	struct local *location;           //In the static allocation and mixed allocation mode, it is known that lpn knows that the lpn is assigned to that channel, chip, die, plane, which is used to store the calculated address
 	struct sub_request *next_subs;    //Points to the child request that belongs to the same request
 	struct sub_request *next_node;    //Points to the next sub-request structure in the same channel
-	struct sub_request *update_0;       //Hard coded update pointer
-	struct sub_request* update_1;      
-	struct sub_request* update_2;       
-	struct sub_request* update_3;
+	struct sub_request *update[MAX_LUN_PER_PAGE];	//Hard coded update pointer
 	struct sub_request* tran_read;
 	unsigned int update_cnt;
 
@@ -631,14 +623,12 @@ struct sub_request{
 
 
 struct parameter_value{
-	unsigned int chip_num;          //the number of chip in ssd
 	unsigned int data_dram_capacity;  //Record the DRAM capacity for data buffer in SSD
 	unsigned int mapping_dram_capacity; //Record the DRAM capacity for mapping cache in SSD
 	unsigned int cpu_sdram;         //sdram capacity in cpu
 
 	unsigned int channel_number;    //Record the number of channels in the SSD, each channel is a separate bus
-	unsigned int chip_channel[100]; //Set the number of channels in the SSD and the number of particles on each channel
-
+	unsigned int chip_channel; //Set the number of chips per channel
 	unsigned int die_chip;    
 	unsigned int plane_die;
 	unsigned int block_plane;

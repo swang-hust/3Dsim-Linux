@@ -60,7 +60,7 @@ struct ssd_info *initiation(struct ssd_info *ssd)
 	ssd->parameter=parameters;
 	ssd->min_lsn = INT32_MAX;
 	ssd->max_lsn = 0;
-	ssd->page = ssd->parameter->chip_num*ssd->parameter->die_chip*ssd->parameter->plane_die*ssd->parameter->block_plane*ssd->parameter->page_block;
+	ssd->page = ssd->parameter->channel_number*ssd->parameter->chip_channel*ssd->parameter->die_chip*ssd->parameter->plane_die*ssd->parameter->block_plane*ssd->parameter->page_block;
 	secno_num_per_page = ssd->parameter->page_capacity / SECTOR;
 	secno_num_sub_page = ssd->parameter->subpage_capacity / SECTOR;
 
@@ -245,7 +245,8 @@ struct dram_info * initialize_dram(struct ssd_info * ssd)
 	/******************************************************************************************************************************************/
 
 	//Mapping Table: LPN -> PPN
-	page_num = (ssd->parameter->page_block * ssd->parameter->block_plane * ssd->parameter->plane_die * ssd->parameter->die_chip * ssd->parameter->chip_num) / (1 + ssd->parameter->overprovide);
+	page_num = (ssd->parameter->page_block * ssd->parameter->block_plane * ssd->parameter->plane_die * ssd->parameter->die_chip 
+		* ssd->parameter->chip_channel * ssd->parameter->channel_number) / (1 + ssd->parameter->overprovide);
 	sub_page_num = page_num * ssd->parameter->subpage_page;
 	dram->map = (struct map_info*)malloc(sizeof(struct map_info));
 	alloc_assert(dram->map, "dram->map");
@@ -273,7 +274,7 @@ void intialize_sb(struct ssd_info * ssd)
 	int i,chan,chip,die,plane,block_off;
 	int k;
 	int sb_num,sb_size;
-	int max_para = ssd->parameter->channel_number*ssd->parameter->chip_channel[0] * ssd->parameter->die_chip*ssd->parameter->plane_die;
+	int max_para = ssd->parameter->channel_number*ssd->parameter->chip_channel * ssd->parameter->die_chip*ssd->parameter->plane_die;
 
 	k = 0;
 	switch (SUPERBLOCK_GRANU) //根据目前的代码，只能以PLANE LEVEL分配，否则GC会出现错误
@@ -295,7 +296,7 @@ void intialize_sb(struct ssd_info * ssd)
 
 				for (chan = 0; chan < ssd->parameter->channel_number; chan++)
 				{
-					for (chip = 0; chip < ssd->parameter->chip_channel[0]; chip++)
+					for (chip = 0; chip < ssd->parameter->chip_channel; chip++)
 					{
 						for (die = 0; die < ssd->parameter->die_chip; die++)
 						{
@@ -330,7 +331,7 @@ void intialize_sb(struct ssd_info * ssd)
 
 				for (die = 0; die < ssd->parameter->die_chip; die++)
 				{
-					for (chip = 0; chip < ssd->parameter->chip_channel[0]; chip++)
+					for (chip = 0; chip < ssd->parameter->chip_channel; chip++)
 					{
 						for (chan = 0; chan < ssd->parameter->channel_number; chan++)
 						{
@@ -362,7 +363,7 @@ void intialize_sb(struct ssd_info * ssd)
 				ssd->sb_pool[i].pos = (struct local*)malloc(sizeof(struct local)*sb_size);
 				block_off = 0;
 
-				for (chip = 0; chip < ssd->parameter->chip_channel[0]; chip++)
+				for (chip = 0; chip < ssd->parameter->chip_channel; chip++)
 				{
 					for (chan = 0; chan < ssd->parameter->channel_number; chan++)
 					{
@@ -381,9 +382,9 @@ void intialize_sb(struct ssd_info * ssd)
 			}
 			break;
 		case CHANNEL_LEVEL://channel-level superblock 
-			sb_num = ssd->parameter->block_plane * ssd->parameter->plane_die*ssd->parameter->die_chip*ssd->parameter->chip_channel[0];
+			sb_num = ssd->parameter->block_plane * ssd->parameter->plane_die*ssd->parameter->die_chip*ssd->parameter->chip_channel;
 			ssd->sb_pool = (struct super_block_info *)malloc(sizeof(struct super_block_info)*sb_num);
-			sb_size = max_para / (ssd->parameter->plane_die*ssd->parameter->die_chip*ssd->parameter->chip_channel[0]);
+			sb_size = max_para / (ssd->parameter->plane_die*ssd->parameter->die_chip*ssd->parameter->chip_channel);
 			for (i = 0; i< sb_num; i++)
 			{
 				ssd->sb_pool[i].ec = 0;
@@ -458,15 +459,15 @@ void show_sb_info(struct ssd_info * ssd)
 //return channel
 int Get_Channel(struct ssd_info * ssd, int i)
 {
-	int off = i%(ssd->parameter->plane_die*ssd->parameter->die_chip*ssd->parameter->chip_channel[0]*ssd->parameter->channel_number);
-	int chan = off / (ssd->parameter->chip_channel[0] * ssd->parameter->die_chip*ssd->parameter->plane_die);
+	int off = i%(ssd->parameter->plane_die*ssd->parameter->die_chip*ssd->parameter->chip_channel*ssd->parameter->channel_number);
+	int chan = off / (ssd->parameter->chip_channel * ssd->parameter->die_chip*ssd->parameter->plane_die);
 	return chan;
 }
 
 //return chip
 int Get_Chip(struct ssd_info * ssd, int i)
 {
-	int off = i % (ssd->parameter->die_chip*ssd->parameter->plane_die*ssd->parameter->chip_channel[0]);
+	int off = i % (ssd->parameter->die_chip*ssd->parameter->plane_die*ssd->parameter->chip_channel);
 	int chip = off / (ssd->parameter->die_chip*ssd->parameter->plane_die);
 	return chip;
 }
@@ -630,15 +631,15 @@ struct ssd_info * initialize_channels(struct ssd_info * ssd )
 		ssd->channel_head[i].channel_program_count = 0;
 		ssd->channel_head[i].channel_erase_count = 0;
 		p_channel = &(ssd->channel_head[i]);
-		p_channel->chip = ssd->parameter->chip_channel[i];
+		p_channel->chip = ssd->parameter->chip_channel;
 		p_channel->current_state = CHANNEL_IDLE;
 		p_channel->next_state = CHANNEL_IDLE;
 		
-		p_channel->chip_head = (struct chip_info *)malloc(ssd->parameter->chip_channel[i]* sizeof(struct chip_info));
+		p_channel->chip_head = (struct chip_info *)malloc(ssd->parameter->chip_channel* sizeof(struct chip_info));
 		alloc_assert(p_channel->chip_head,"p_channel->chip_head");
-		memset(p_channel->chip_head,0,ssd->parameter->chip_channel[i]* sizeof(struct chip_info));
+		memset(p_channel->chip_head,0,ssd->parameter->chip_channel* sizeof(struct chip_info));
 
-		for (j = 0; j< ssd->parameter->chip_channel[i]; j++)
+		for (j = 0; j< ssd->parameter->chip_channel; j++)
 		{
 			p_chip = &(p_channel->chip_head[j]);
 			initialize_chip(p_chip,ssd->parameter,ssd->current_time );
@@ -654,7 +655,6 @@ struct parameter_value *load_parameters(char parameter_file[30])
 	FILE * fp = NULL;
 	struct parameter_value *p;
 	char buf[BUFSIZE];
-	int i;
 	int pre_eql,next_eql;
 	int res_eql;
 	char *ptr;
@@ -683,7 +683,7 @@ struct parameter_value *load_parameters(char parameter_file[30])
 		while(buf[pre_eql-1] == ' ') pre_eql--;
 		buf[pre_eql] = 0;
 		if((res_eql=strcmp(buf,"chip number")) ==0){			
-			sscanf(buf + next_eql,"%d",&p->chip_num);           //The number of chips
+			sscanf(buf + next_eql,"%d",&p->chip_channel);           //The number of chips
 		}else if((res_eql=strcmp(buf,"data dram capacity")) ==0){
 			sscanf(buf + next_eql,"%d",&p->data_dram_capacity);      //The size of the cache, the unit is byte
 		}else if ((res_eql = strcmp(buf, "mapping dram capacity")) == 0) {
@@ -816,10 +816,6 @@ struct parameter_value *load_parameters(char parameter_file[30])
 			sscanf(buf + next_eql,"%d",&p->queue_length);               //Request the queue depth
 		}else if ((res_eql = strcmp(buf, "warm flash")) == 0){
 			sscanf(buf + next_eql, "%d", &p->warm_flash);
-		}else if((res_eql=strncmp(buf,"chip number",11)) ==0)
-		{
-			sscanf(buf+12,"%d",&i);
-			sscanf(buf + next_eql,"%d",&p->chip_channel[i]);            //The number of chips on a channel
 		}else{
 			printf("don't match\t %s\n",buf);
 		}
@@ -853,7 +849,7 @@ Status Read_cnt_4_Debug(struct ssd_info *ssd)
 	for (chan = 0; chan < ssd->parameter->channel_number; chan++)
 	{
 		
-		for (chip = 0; chip < ssd->parameter->chip_channel[chan]; chip++)
+		for (chip = 0; chip < ssd->parameter->chip_channel; chip++)
 		{
 			for (die = 0; die < ssd->parameter->die_chip; die++)
 			{

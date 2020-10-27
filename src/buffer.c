@@ -397,7 +397,7 @@ struct ssd_info * check_w_buff(struct ssd_info *ssd, unsigned int lpn, int state
 
 	if (buffer_node == NULL)      
 	{
-		read_reqeust(ssd, lpn, req, state, USER_DATA);
+		read_request(ssd, lpn, req, state, USER_DATA);
 
 		ssd->dram->data_buffer->read_miss_hit++;         
 	}
@@ -409,7 +409,7 @@ struct ssd_info * check_w_buff(struct ssd_info *ssd, unsigned int lpn, int state
 		}
 		else    
 		{ 
-			read_reqeust(ssd, lpn, req, state, USER_DATA);
+			read_request(ssd, lpn, req, state, USER_DATA);
 			ssd->dram->data_buffer->read_miss_hit++;
 		}
 	}
@@ -902,24 +902,9 @@ Status update_read_request(struct ssd_info *ssd, unsigned int lpn, unsigned int 
 
 void insert2update_reqs(struct ssd_info* ssd, struct sub_request* req, struct sub_request* update)
 {
-	switch (req->update_cnt)
-	{
-	case 0:
-		req->update_0 = update;
-		break;
-	case 1:
-		req->update_1 = update;
-		break;
-	case 2:
-		req->update_2 = update;
-		break;
-	case 3:
-		req->update_3 = update;
-		break;
-	default:
-		break;
-	}
+	req->update[req->update_cnt] = update;
 	req->update_cnt++;
+	return;
 }
 
 
@@ -979,7 +964,7 @@ unsigned int translate(struct ssd_info* ssd, unsigned int lpn, struct sub_reques
 	return ppn;
 }
 
-int read_reqeust(struct ssd_info *ssd, unsigned int lpn, struct request *req, unsigned int state,unsigned int data_type)
+int read_request(struct ssd_info *ssd, unsigned int lpn, struct request *req, unsigned int state,unsigned int data_type)
 {
 	struct sub_request* sub = NULL;
 	struct local *tem_loc = NULL;
@@ -988,24 +973,16 @@ int read_reqeust(struct ssd_info *ssd, unsigned int lpn, struct request *req, un
 
 	//create a sub request 
 	sub = (struct sub_request*)malloc(sizeof(struct sub_request));
-	if (sub == NULL)
-	{
-		return 0;
-	}
+	alloc_assert(sub, "sub");
 	sub->next_node = NULL;
 	sub->next_subs = NULL;
 	sub->update_cnt = 0;
-	if (req == NULL)  //request is NULL means update reqd in this version. sub->update
-	{
-		assert(0);
-		//req = sub;
-	}
-	else
-	{
-		sub->next_subs = req->subs;
-		req->subs = sub;
-		sub->total_request = req;
-	}
+	
+	assert(req != NULL);
+
+	sub->next_subs = req->subs;
+	req->subs = sub;
+	sub->total_request = req;
 
 	//address translation 
 	pn = translate(ssd, lpn, sub);
