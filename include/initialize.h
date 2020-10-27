@@ -15,7 +15,6 @@
 
 #define SECTOR 512
 #define BUFSIZE 200
-#define INDEX 10
 #define PAGE_INDEX 1 //tlc mode .LSB/CSB/MSB
 //#define PLANE_NUMBER 8 //for_plane_buffer
 #define DIE_NUMBER 4
@@ -133,7 +132,8 @@
 #define SET_VALID(s,i) ((1<<i)|s)
 #define GET_BIT(s,i)    ((s>>i)&1)
 
-//define superblock infomation 
+//Superblock Granularity
+#define SUPERBLOCK_GRANU PLANE_LEVEL
 #define PLANE_LEVEL 1
 #define DIE_LEVEL 2
 #define CHIP_LEVEL 3
@@ -373,8 +373,6 @@ struct ssd_info{
 
 	unsigned int data_program_cnt;
 	unsigned int tran_program_cnt;
-
-	unsigned int debug_cnt;
 };
 
 
@@ -693,7 +691,6 @@ struct parameter_value{
 	float aged_ratio; 
 	int queue_length;               //Request the length of the queue
 	int warm_flash;
-	int update_reqeust_max;		    //request the length of sub request(partial page)
 	int flash_mode;                 //0--slc mode,1--tlc mode
 
 	struct ac_time_characteristics time_characteristics;

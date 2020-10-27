@@ -59,15 +59,13 @@ struct ssd_info *initiation(struct ssd_info *ssd)
 	parameters=load_parameters(ssd->parameterfilename);
 	ssd->parameter=parameters;
 	ssd->min_lsn = INT32_MAX;
-	ssd->page=ssd->parameter->chip_num*ssd->parameter->die_chip*ssd->parameter->plane_die*ssd->parameter->block_plane*ssd->parameter->page_block;
-	ssd->parameter->update_reqeust_max = (ssd->parameter->data_dram_capacity / ssd->parameter->page_capacity) / INDEX;
+	ssd->max_lsn = 0;
+	ssd->page = ssd->parameter->chip_num*ssd->parameter->die_chip*ssd->parameter->plane_die*ssd->parameter->block_plane*ssd->parameter->page_block;
 	secno_num_per_page = ssd->parameter->page_capacity / SECTOR;
 	secno_num_sub_page = ssd->parameter->subpage_capacity / SECTOR;
 
 	//Initialize the statistical parameters
 	initialize_statistic(ssd);
-
-	ssd->debug_cnt = 0;
 
 	//Initialize channel_info
 	ssd->channel_head=(struct channel_info*)malloc(ssd->parameter->channel_number * sizeof(struct channel_info));
@@ -82,11 +80,6 @@ struct ssd_info *initiation(struct ssd_info *ssd)
 	ssd->read_req = fopen("output/read requests.txt", "w");
 	ssd->write_req = fopen("output/write requests.txt","w");
 	ssd->smt = fopen("output/smt informnation.txt","w");
-
-	//ssd->die_read_req = fopen("Read_Request_Count_Per_Die.txt", "w");
-	//show sb info 
-	//show_sb_info(ssd);;
-
 
 	//Initialize dram_info
 	ssd->dram = (struct dram_info *)malloc(sizeof(struct dram_info));
@@ -283,11 +276,12 @@ void intialize_sb(struct ssd_info * ssd)
 	int max_para = ssd->parameter->channel_number*ssd->parameter->chip_channel[0] * ssd->parameter->die_chip*ssd->parameter->plane_die;
 
 	k = 0;
-	switch (1)
+	switch (SUPERBLOCK_GRANU) //根据目前的代码，只能以PLANE LEVEL分配，否则GC会出现错误
 	{
-		case 1: //plane-level superblock 
+		case PLANE_LEVEL: //plane-level superblock 
 			sb_num = ssd->parameter->block_plane;
-			ssd->sb_pool = (struct super_block_info *)malloc(sizeof(struct super_block_info)*sb_num);
+			ssd->sb_pool = (struct super_block_info *)malloc(sizeof(struct super_block_info) * sb_num);
+			alloc_assert(ssd->sb_pool, "ssd->sb_pool");
 			sb_size = max_para;
 			for (i = 0;  i< sb_num; i++)
 			{
@@ -321,7 +315,7 @@ void intialize_sb(struct ssd_info * ssd)
 				block_off = 0;
 			}	
 			break;
-		case 2: //die-level superblock 
+		case DIE_LEVEL: //die-level superblock 
 			sb_num = ssd->parameter->block_plane * ssd->parameter->plane_die;
 			ssd->sb_pool = (struct super_block_info *)malloc(sizeof(struct super_block_info)*sb_num);
 			sb_size = max_para/ssd->parameter->plane_die;
@@ -355,7 +349,7 @@ void intialize_sb(struct ssd_info * ssd)
 				block_off = 0;
 			}
 			break;
-		case 3://chip-level superblock 
+		case CHIP_LEVEL://chip-level superblock 
 			sb_num = ssd->parameter->block_plane * ssd->parameter->plane_die*ssd->parameter->die_chip;
 			ssd->sb_pool = (struct super_block_info *)malloc(sizeof(struct super_block_info)*sb_num);
 			sb_size = max_para / (ssd->parameter->plane_die*ssd->parameter->die_chip);
@@ -386,7 +380,7 @@ void intialize_sb(struct ssd_info * ssd)
 				block_off = 0;
 			}
 			break;
-		case 4://channel-level superblock 
+		case CHANNEL_LEVEL://channel-level superblock 
 			sb_num = ssd->parameter->block_plane * ssd->parameter->plane_die*ssd->parameter->die_chip*ssd->parameter->chip_channel[0];
 			ssd->sb_pool = (struct super_block_info *)malloc(sizeof(struct super_block_info)*sb_num);
 			sb_size = max_para / (ssd->parameter->plane_die*ssd->parameter->die_chip*ssd->parameter->chip_channel[0]);
@@ -667,8 +661,8 @@ struct parameter_value *load_parameters(char parameter_file[30])
 
 	p = (struct parameter_value *)malloc(sizeof(struct parameter_value));
 	alloc_assert(p,"parameter_value");
-	memset(p,0,sizeof(struct parameter_value));
-	memset(buf,0,BUFSIZE);
+	memset(p, 0, sizeof(struct parameter_value));
+	memset(buf, 0, BUFSIZE);
 	fp = fopen(parameter_file, "rb");
 	if (fp == NULL)
 	// if((ferr = fopen_s(&fp,parameter_file,"r"))!= 0)

@@ -229,15 +229,14 @@ int get_requests(struct ssd_info *ssd)
 int64_t find_nearest_event(struct ssd_info *ssd)
 {
 	unsigned int i, j;
-	int64_t time = 0x7fffffffffffffff;
-	int64_t time1 = 0x7fffffffffffffff;
-	int64_t time2 = 0x7fffffffffffffff;
+	int64_t time1 = INT64_MAX;
+	int64_t time2 = INT64_MAX;
 
 	for (i = 0; i<ssd->parameter->channel_number; i++)
 	{
 		if (ssd->channel_head[i].next_state == CHANNEL_IDLE)
 			if (time1>ssd->channel_head[i].next_state_predict_time)
-				if (ssd->channel_head[i].next_state_predict_time>ssd->current_time)
+				if (ssd->channel_head[i].next_state_predict_time > ssd->current_time)
 					time1 = ssd->channel_head[i].next_state_predict_time;
 		for (j = 0; j<ssd->parameter->chip_channel[i]; j++)
 		{
@@ -254,6 +253,5 @@ int64_t find_nearest_event(struct ssd_info *ssd)
 	*			  C.next state is CHIP_DATA_TRANSFER and next_state_predict_time> ssd->current_time
 	*A/B/C all not meet，return 0x7fffffffffffffff,means channel and chip is idle
 	*****************************************************************************************************/
-	time = (time1>time2) ? time2 : time1;
-	return time;
+	return (time1>time2) ? time2 : time1;
 }
