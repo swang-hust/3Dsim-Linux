@@ -13,6 +13,8 @@
 
 #include "avlTree.h"
 
+#define WS_DEBUG 1
+
 #define SECTOR 512
 #define BUFSIZE 200
 #define PAGE_INDEX 1 //tlc mode .LSB/CSB/MSB
@@ -159,7 +161,7 @@
 #define SFTL 2
 #define TPFTL 3
 
-#define DFTL SFTL
+#define DFTL FULLY_CACHED
 #define ENTRY_PER_SUB_PAGE 1024
 
 #define FULL_FLAG 1024
@@ -532,12 +534,6 @@ typedef struct buffer_group{
 	int state[MAX_LSN_NUM];
 	unsigned int lsn_count;
 
-	/*
-	  for mapppingn buffer: DFT with page-level replacement
-	  max entry number per page = 4 KB / 4 B = 1 K = 2^10
-	 */
-    //char bitmap[128]; //2^10 bits = 2^7 B , indicate whether this lpn is cache in mapping buffer. Actually, all mapping entries  are kept in mapping buffer
-	//unsigned int dirty; // indicate whether the mapping node (page) is dirty or not 
 	unsigned int entry_cnt;  // record the numner of mapping entries in the cached node
 }data_buf_node;
 
@@ -752,7 +748,6 @@ int Get_Plane(struct ssd_info * ssd, int i);
 int Get_Read_Request_Cnt(struct ssd_info *ssd, unsigned int chan, unsigned int chip, unsigned int die);
 Status Read_cnt_4_Debug(struct ssd_info *ssd);
 Status Write_cnt(struct ssd_info* ssd, unsigned int chan);
-Status Read_cnt(struct ssd_info* ssd, unsigned int chan);
 Status Debug_loc_allocation(struct ssd_info* ssd, unsigned int pun, unsigned int channel, unsigned int chip, unsigned int die, unsigned int plane, unsigned int block, unsigned int page, unsigned int unit);
 struct local* find_location_pun(struct ssd_info* ssd, unsigned int pun);
 

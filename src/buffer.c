@@ -395,10 +395,9 @@ struct ssd_info * check_w_buff(struct ssd_info *ssd, unsigned int lpn, int state
 	key.group = lpn;
 	buffer_node = (struct buffer_group*)avlTreeFind(ssd->dram->data_buffer, (TREE_NODE *)&key);
 
-	if (buffer_node == NULL)      
+	if (buffer_node == NULL)
 	{
 		read_request(ssd, lpn, req, state, USER_DATA);
-
 		ssd->dram->data_buffer->read_miss_hit++;         
 	}
 	else
@@ -421,7 +420,7 @@ struct ssd_info * check_w_buff(struct ssd_info *ssd, unsigned int lpn, int state
 ********************************************************************************/
 struct ssd_info * insert2buffer(struct ssd_info *ssd, unsigned int lpn, int state, struct sub_request *sub, struct request *req)
 {
-	int write_back_count, flag = 0;                                  
+	int write_back_count;                                  
 	unsigned int sector_count, free_sector = 0;
 	struct buffer_group *buffer_node = NULL, *pt, *new_node = NULL, key;
 
@@ -438,19 +437,15 @@ struct ssd_info * insert2buffer(struct ssd_info *ssd, unsigned int lpn, int stat
 
 	if (buffer_node == NULL)
 	{
-		free_sector = ssd->dram->data_buffer->max_buffer_sector - ssd->dram->data_buffer->buffer_sector_count;
-
-		if (free_sector >= sector_count)
-		{
-			flag = 1;
-		}
-		if (flag == 0)
+		if (ssd->dram->data_buffer->max_buffer_sector < sector_count + ssd->dram->data_buffer->buffer_sector_count)
 		{	
+#if WS_DEBUG
+			assert(sector_count > free_sector);
+#endif
 			write_back_count = sector_count - free_sector;
-			while (write_back_count>0)
+			while (write_back_count > 0)
 			{
 				sub_req_state = ssd->dram->data_buffer->buffer_tail->stored;
-				//sub_req_size = size(ssd->dram->data_buffer->buffer_tail->stored);
 				sub_req_size = secno_num_sub_page;   //after aligning
 				sub_req_lpn = ssd->dram->data_buffer->buffer_tail->group;
 
@@ -691,7 +686,7 @@ struct ssd_info * insert2_command_buffer(struct ssd_info* ssd, struct buffer_inf
 	//unsigned int used_size, max_size;
 
 	key.group = lpn;
-		command_buffer_node = (struct buffer_group*)avlTreeFind(command_buffer, (TREE_NODE *)&key);
+	command_buffer_node = (struct buffer_group*)avlTreeFind(command_buffer, (TREE_NODE *)&key);
 
 	if (state == 0)
 	{
@@ -748,7 +743,7 @@ struct ssd_info * insert2_command_buffer(struct ssd_info* ssd, struct buffer_inf
 					}
 					if (lun_state == 0)
 					{
-						printf("Debug Look Here\n");
+						printf("Debug Look Here: %s\n", __FUNCTION__);
 					}
 					sub_req->luns[sub_req->lun_count] = lun;
 					sub_req->lun_state[sub_req->lun_count++] = lun_state;	
@@ -803,22 +798,7 @@ struct ssd_info * insert2_command_buffer(struct ssd_info* ssd, struct buffer_inf
 			command_buffer_node->stored = command_buffer_node->stored | state;
 		else
 		{
-		
 			command_buffer_node->stored = ssd->map_entry_per_subpage;
-			//command_buffer_node->stored = 0;   // record the replaced update count
-
-		/*  in GC migration process, map_entry[lun].state = 0, so cache valid = 0
-			//update replaced update count 
-			for (i = 0; i < ssd->map_entry_per_subpage; i++)
-			{
-				tem_lun = lpn * ssd->map_entry_per_subpage + i;
-				if (ssd->dram->map->map_entry[tem_lun].cache_valid == 1)
-				{
-					command_buffer_node->stored++;
-					// ssd->dram->map->map_entry[tem_lun].cache_valid = 0;   //modify the cache state when the node is flushed into flash
-				} 
-			}
-		*/
 		}
 	}
 
@@ -991,8 +971,9 @@ int read_request(struct ssd_info *ssd, unsigned int lpn, struct request *req, un
 	{
 		ssd->req_read_hit_cnt++;
 		tem_loc = (struct local*)malloc(sizeof(struct local));
+		alloc_assert(tem_loc, "FUNCTION : read_request");
+		memset(tem_loc, 0, sizeof(struct local));
 		sub->location = tem_loc;
-
 		sub->lpn = lpn;
 		sub->current_state = SR_R_DATA_TRANSFER;
 		sub->current_time = ssd->current_time;
@@ -1180,6 +1161,9 @@ Status creat_one_read_sub_req(struct ssd_info *ssd, struct sub_request* sub)
 		}
 		else
 		{
+#if WS_DEBUG
+			assert(ssd->channel_head[loc->channel].subs_r_head == NULL);
+#endif //WS_DEBUG
 			ssd->channel_head[loc->channel].subs_r_head = sub;
 			ssd->channel_head[loc->channel].subs_r_tail = sub;
 		}
@@ -1192,6 +1176,5 @@ Status creat_one_read_sub_req(struct ssd_info *ssd, struct sub_request* sub)
 		sub->next_state_predict_time = ssd->current_time + 1000;
 		sub->complete_time = ssd->current_time + 1000;
 	}
-	//Read_cnt(ssd, loc->channel);
 	return SUCCESS;
 }

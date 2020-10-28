@@ -893,29 +893,6 @@ Status Write_cnt(struct ssd_info* ssd, unsigned int chan)
 	return w_cnt;
 }
 
-Status Read_cnt(struct ssd_info* ssd, unsigned int chan)
-{
-	unsigned int r_cnt;
-	struct sub_request* sub;
-
-	r_cnt = 0;
-	fprintf(ssd->read_req, "Channel %d  sub reqeusts are as follow:\n", chan);
-	sub = ssd->channel_head[chan].subs_r_head;
-	while (sub)
-	{
-		fprintf(ssd->read_req, "OX%p ->", sub);
-		r_cnt++;
-		sub = sub->next_node;
-		if (r_cnt > 50)
-		{
-			break;
-		}
-	}
-	fprintf(ssd->read_req, "\n");
-	fflush(ssd->read_req);
-	return r_cnt;
-}
-
 Status Debug_loc_allocation(struct ssd_info* ssd, unsigned int pun, unsigned int channel, unsigned int chip, unsigned int die, unsigned int plane, unsigned int block, unsigned int page, unsigned int unit)
 {
 	struct  local* loc;

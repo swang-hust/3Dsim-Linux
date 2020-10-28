@@ -680,9 +680,6 @@ struct ssd_info* compute_read_serve_time(struct ssd_info* ssd, unsigned int chan
 	ssd->channel_head[channel].chip_head[chip].next_state = CHIP_IDLE;
 	ssd->channel_head[channel].chip_head[chip].next_state_predict_time = ssd->current_time + read_time;
 
-	//fprintf(ssd->read_req, "Before Deleting Sub Requests\n");
-	//Read_cnt(ssd, channel);
-
 	for (i = 0; i < subs_count; i++)
 	{
 		subs[i]->current_state = SR_R_DATA_TRANSFER;
@@ -701,9 +698,6 @@ struct ssd_info* compute_read_serve_time(struct ssd_info* ssd, unsigned int chan
 
 		delete_from_channel(ssd, channel, subs[i]);
 	}
-
-	//fprintf(ssd->read_req, "After Deleting Sub Requests\n");
-	//Read_cnt(ssd, channel);
 
 	ssd->channel_head[channel].current_state = CHANNEL_TRANSFER;
 	ssd->channel_head[channel].current_time = ssd->current_time;
