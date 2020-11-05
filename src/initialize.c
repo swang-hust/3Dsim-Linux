@@ -64,6 +64,9 @@ struct ssd_info *initiation(struct ssd_info *ssd)
 	secno_num_per_page = ssd->parameter->page_capacity / SECTOR;
 	secno_num_sub_page = ssd->parameter->subpage_capacity / SECTOR;
 
+	//Initialize multi-Tenant configs
+	initialize_user(ssd);
+
 	//Initialize the statistical parameters
 	initialize_statistic(ssd);
 
@@ -73,8 +76,7 @@ struct ssd_info *initiation(struct ssd_info *ssd)
 	memset(ssd->channel_head,0,ssd->parameter->channel_number * sizeof(struct channel_info));
 	initialize_channels(ssd );
 
-   //initialize the superblock info 
-	intialize_sb(ssd);
+   
 
 	ssd->sb_info = fopen("output/superblock_info.txt", "w");
 	ssd->read_req = fopen("output/read requests.txt", "w");
@@ -268,170 +270,90 @@ struct dram_info * initialize_dram(struct ssd_info * ssd)
 	return dram;
 }
 
-//initialize all superblocks 
-void intialize_sb(struct ssd_info * ssd)
+void initialize_user(struct ssd_info *ssd) {
+	int user_nb = USER_NB;
+	int user_channel[] = USER_CHANNEL;
+
+#if WS_DEBUG
+	int channel_nb = 0;
+	for (int i = 0; i < user_nb; ++i) {
+		channel_nb += user_channel[i];
+	}
+	assert(channel_nb == ssd->parameter->channel_number);
+#endif //WS_DEBUG
+
+	ssd->user_head = (user_info *)malloc(user_nb * sizeof(user_info));
+	user_info *user_head = ssd->user_head;
+
+	int started_channel = 0;
+
+	for (int i = 0; i < user_nb; ++i) {
+		user_head[i].begin_channel = started_channel;
+		user_head[i].end_channel = started_channel + user_channel[i];
+		started_channel += user_channel[i];
+		initialize_user_sb(ssd, i);
+	}
+
+	return;
+}
+
+void initialize_user_sb(struct ssd_info * ssd, int user_id) 
 {
-	int i,chan,chip,die,plane,block_off;
-	int k;
-	int sb_num,sb_size;
-	int max_para = ssd->parameter->channel_number*ssd->parameter->chip_channel * ssd->parameter->die_chip*ssd->parameter->plane_die;
+	int chan, chip, die, plane, block_off;
+	user_info *user_head = ssd->user_head + user_id;
+	int user_channel[] = USER_CHANNEL;
+	struct parameter_value *para = ssd->parameter;
 
-	k = 0;
-	switch (SUPERBLOCK_GRANU) //根据目前的代码，只能以PLANE LEVEL分配，否则GC会出现错误
+	// int max_para = para->channel_number * para->chip_channel * para->die_chip * para->plane_die;
+	int sb_size = user_channel[user_id] * para->chip_channel * para->die_chip * para->plane_die, sb_num = para->block_plane;
+
+	switch (SUPERBLOCK_GRANU)
 	{
-		case PLANE_LEVEL: //plane-level superblock 
-			sb_num = ssd->parameter->block_plane;
-			ssd->sb_pool = (struct super_block_info *)malloc(sizeof(struct super_block_info) * sb_num);
-			alloc_assert(ssd->sb_pool, "ssd->sb_pool");
-			sb_size = max_para;
-			for (i = 0;  i< sb_num; i++)
+	case PLANE_LEVEL:
+		user_head->sb_size = sb_size;
+		user_head->sb_cnt = sb_num;
+		user_head->free_sb_cnt = sb_num;
+
+		user_head->sb_pool = (struct super_block_info *)malloc(sizeof(struct super_block_info) * sb_num);
+
+		for (int i = 0; i < sb_num; i++) {
+			user_head->sb_pool[i].ec = 0;
+			user_head->sb_pool[i].blk_cnt = sb_size;
+			user_head->sb_pool[i].next_wr_page = 0;
+			user_head->sb_pool[i].pg_off = -1;
+			user_head->sb_pool[i].pos = (struct local*)malloc(sizeof(struct local)*sb_size);
+			user_head->sb_pool[i].blk_type = -1;
+
+			block_off = 0;
+
+			
+			for (chan = user_head->begin_channel; chan < user_head->end_channel; chan++)
 			{
-				ssd->sb_pool[i].ec = 0;
-				ssd->sb_pool[i].blk_cnt = sb_size;
-				ssd->sb_pool[i].next_wr_page = 0;
-				ssd->sb_pool[i].pg_off = -1;
-				ssd->sb_pool[i].pos = (struct local*)malloc(sizeof(struct local)*sb_size);
-				ssd->sb_pool[i].blk_type = -1;
-				block_off = 0;
-
-				for (chan = 0; chan < ssd->parameter->channel_number; chan++)
+				for (chip = 0; chip < para->chip_channel; chip++)
 				{
-					for (chip = 0; chip < ssd->parameter->chip_channel; chip++)
+					for (die = 0; die < para->die_chip; die++)
 					{
-						for (die = 0; die < ssd->parameter->die_chip; die++)
+						for (plane = 0; plane < para->plane_die; plane++)
 						{
-							for (plane = 0; plane < ssd->parameter->plane_die; plane++)
-							{
-								ssd->sb_pool[i].pos[block_off].channel = chan;
-								ssd->sb_pool[i].pos[block_off].chip = chip;
-								ssd->sb_pool[i].pos[block_off].die = die;
-								ssd->sb_pool[i].pos[block_off].plane = plane;
-								ssd->sb_pool[i].pos[block_off].block = k / max_para;
-								k++;
-								block_off++;
-							}
-						}
-					}
-				}
-				block_off = 0;
-			}	
-			break;
-		case DIE_LEVEL: //die-level superblock 
-			sb_num = ssd->parameter->block_plane * ssd->parameter->plane_die;
-			ssd->sb_pool = (struct super_block_info *)malloc(sizeof(struct super_block_info)*sb_num);
-			sb_size = max_para/ssd->parameter->plane_die;
-			for (i = 0; i< sb_num; i++)
-			{
-				ssd->sb_pool[i].ec = 0;
-				ssd->sb_pool[i].blk_cnt = sb_size;
-				ssd->sb_pool[i].next_wr_page = 0;
-				ssd->sb_pool[i].pg_off = -1;
-				ssd->sb_pool[i].pos = (struct local*)malloc(sizeof(struct local)*sb_size);
-				block_off = 0;
-
-				for (die = 0; die < ssd->parameter->die_chip; die++)
-				{
-					for (chip = 0; chip < ssd->parameter->chip_channel; chip++)
-					{
-						for (chan = 0; chan < ssd->parameter->channel_number; chan++)
-						{
-							ssd->sb_pool[i].pos[block_off].channel = chan;
-							ssd->sb_pool[i].pos[block_off].chip = chip;
-							ssd->sb_pool[i].pos[block_off].die = die;
-
-							//decide the plane no in the die
-							ssd->sb_pool[i].pos[block_off].plane =Get_Plane(ssd,i);
-							ssd->sb_pool[i].pos[block_off].block = k / max_para;
-							k++;
+							user_head->sb_pool[i].pos[block_off].channel = chan;
+							user_head->sb_pool[i].pos[block_off].chip = chip;
+							user_head->sb_pool[i].pos[block_off].die = die;
+							user_head->sb_pool[i].pos[block_off].plane = plane;
+							user_head->sb_pool[i].pos[block_off].block = i;
 							block_off++;
 						}
 					}
 				}
-				block_off = 0;
 			}
-			break;
-		case CHIP_LEVEL://chip-level superblock 
-			sb_num = ssd->parameter->block_plane * ssd->parameter->plane_die*ssd->parameter->die_chip;
-			ssd->sb_pool = (struct super_block_info *)malloc(sizeof(struct super_block_info)*sb_num);
-			sb_size = max_para / (ssd->parameter->plane_die*ssd->parameter->die_chip);
-			for (i = 0; i< sb_num; i++)
-			{
-				ssd->sb_pool[i].ec = 0;
-				ssd->sb_pool[i].blk_cnt = sb_size;
-				ssd->sb_pool[i].next_wr_page = 0;
-				ssd->sb_pool[i].pg_off = -1;
-				ssd->sb_pool[i].pos = (struct local*)malloc(sizeof(struct local)*sb_size);
-				block_off = 0;
-
-				for (chip = 0; chip < ssd->parameter->chip_channel; chip++)
-				{
-					for (chan = 0; chan < ssd->parameter->channel_number; chan++)
-					{
-						ssd->sb_pool[i].pos[block_off].channel = chan;
-						ssd->sb_pool[i].pos[block_off].chip = chip;
-
-						//decide the die no and plane no
-						ssd->sb_pool[i].pos[block_off].die = Get_Die(ssd,i);
-						ssd->sb_pool[i].pos[block_off].plane = Get_Plane(ssd,i);
-						ssd->sb_pool[i].pos[block_off].block = k / max_para;
-						k++;
-						block_off++;
-					}
-				}
-				block_off = 0;
-			}
-			break;
-		case CHANNEL_LEVEL://channel-level superblock 
-			sb_num = ssd->parameter->block_plane * ssd->parameter->plane_die*ssd->parameter->die_chip*ssd->parameter->chip_channel;
-			ssd->sb_pool = (struct super_block_info *)malloc(sizeof(struct super_block_info)*sb_num);
-			sb_size = max_para / (ssd->parameter->plane_die*ssd->parameter->die_chip*ssd->parameter->chip_channel);
-			for (i = 0; i< sb_num; i++)
-			{
-				ssd->sb_pool[i].ec = 0;
-				ssd->sb_pool[i].blk_cnt = sb_size;
-				ssd->sb_pool[i].next_wr_page = 0;
-				ssd->sb_pool[i].pg_off = -1;
-				ssd->sb_pool[i].pos = (struct local*)malloc(sizeof(struct local)*sb_size);
-				block_off = 0;
-
-			   for (chan = 0; chan < ssd->parameter->channel_number; chan++)
-			   {
-					ssd->sb_pool[i].pos[block_off].channel = chan;
-
-					ssd->sb_pool[i].pos[block_off].chip = Get_Chip(ssd,i);
-					ssd->sb_pool[i].pos[block_off].die = Get_Die(ssd,i);
-					ssd->sb_pool[i].pos[block_off].plane = Get_Plane(ssd,i);
-					ssd->sb_pool[i].pos[block_off].block = k / max_para;
-					k++;
-					block_off++;
-				}
-				block_off = 0;
-			}
-			break;
-		default:
-			break;
+		}
+		break;
+	
+	default:
+		printf("Error[%s]: Superblock granu[%d] no implement yet.", __FUNCTION__, SUPERBLOCK_GRANU);
+		break;
 	}
 
-	ssd->sb_cnt = sb_num;
-	ssd->free_sb_cnt = ssd->sb_cnt;
-
-	/*
-	ssd->open_sb = (struct super_block_info *)malloc(sizeof(struct super_block_info));
-	ssd->open_sb->blk_cnt = sb_size;
-	ssd->open_sb->ec = 0;
-	ssd->open_sb->next_wr_page = 0;
-	ssd->open_sb->pg_off = -1;
-	ssd->open_sb->pos = (struct super_block_info *)malloc(sizeof(struct super_block_info)*sb_num);
-
-	for (i = 0; i < sb_size; i++)
-	{
-		ssd->open_sb->pos[i].channel = -1;
-		ssd->open_sb->pos[i].chip = -1;
-		ssd->open_sb->pos[i].die = -1;
-		ssd->open_sb->pos[i].plane = -1;
-		ssd->open_sb->pos[i].block = -1;
-	}
-	*/
+	return;
 }
 
 //show pe info 

@@ -15,6 +15,9 @@
 
 #define WS_DEBUG 1
 
+#define USER_NB 2
+#define USER_CHANNEL {1, 1}
+
 #define SECTOR 512
 #define BUFSIZE 200
 #define PAGE_INDEX 1 //tlc mode .LSB/CSB/MSB
@@ -177,6 +180,8 @@
 #define TRANSACTION_COMMAND_BUFFER 1
 #define CACHE_VALID 1
 #define CACHE_INVALID 0
+
+#define DATA_TYPE_NB 2
 #define USER_DATA 0
 #define MAPPING_DATA 1
 
@@ -246,6 +251,15 @@ struct ac_time_characteristics{
 	int tRST;      //device resetting time
 }ac_timing;
 
+typedef struct user_info {
+	unsigned int begin_channel;
+	unsigned int end_channel;
+	int sb_cnt;
+	int sb_size;
+	int free_sb_cnt;
+	struct super_block_info *sb_pool;
+	struct super_block_info *open_sb[DATA_TYPE_NB]; //0 is for user data ; 1 is for mapping data
+}user_info;
 
 struct ssd_info{ 
 	//Global variable
@@ -261,11 +275,8 @@ struct ssd_info{
 	
 	bool gc_flag;
 
-	//superblock info
-	int sb_cnt;
-	int free_sb_cnt;
-	struct super_block_info *sb_pool;
-	struct super_block_info *open_sb[2]; //0 is for user data ; 1 is for mapping data
+	// user info
+	user_info *user_head;
 
 	int64_t current_time;                //Record system time
 	int64_t next_request_time;
@@ -499,10 +510,9 @@ struct dram_info{
 
 	struct map_info *map;   //mapping for user data
 	unsigned int data_buffer_capacity;
-	struct map_info * tran_map;  //gloabal translation derectory 
+	struct map_info *tran_map;  //gloabal translation derectory 
 	unsigned int mapping_buffer_capacity;
 
-	
 	struct buffer_info *data_buffer;  //data buffer 
 	struct buffer_info* mapping_buffer; //mapping_buffer
 	struct buffer_info *data_command_buffer;					 //data commond buffer
@@ -635,6 +645,7 @@ struct parameter_value{
 	unsigned int subpage_capacity;
 	unsigned int mapping_entry_size;
 
+	double dup_ratio;	//ratio of fp number and subpage number.
 
 	unsigned int ers_limit;         //Record the number of erasable blocks per block
 	int address_mapping;            //Record the type of mapping,1：page；2：block；3：fast
@@ -740,7 +751,7 @@ struct ssd_info * initialize_channels(struct ssd_info * ssd );
 struct dram_info * initialize_dram(struct ssd_info * ssd);
 void initialize_statistic(struct ssd_info * ssd);
 void show_sb_info(struct ssd_info * ssd);
-void intialize_sb(struct ssd_info * ssd);
+void initialize_user(struct ssd_info *ssd);
 int Get_Channel(struct ssd_info * ssd, int i);
 int Get_Chip(struct ssd_info * ssd, int i);
 int Get_Die(struct ssd_info * ssd, int i);
